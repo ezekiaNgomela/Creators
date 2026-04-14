@@ -69,11 +69,11 @@ func (s *Service) RegisterUser(ctx context.Context, req RegisterUserRequest) (Au
 	}
 
 	user, err := s.repo.CreateUser(ctx, repository.CreateUserParams{
-		Username:     req.Username,
-		Email:        req.Email,
+		Username: req.Username,
+		Email: req.Email,
 		PasswordHash: string(hash),
-		Role:         "user",
-		IsVerified:   true,
+		Role: "user",
+		IsVerified: true,
 	})
 	if err != nil {
 		return AuthResponse{}, err
@@ -83,7 +83,6 @@ func (s *Service) RegisterUser(ctx context.Context, req RegisterUserRequest) (Au
 	if err != nil {
 		return AuthResponse{}, err
 	}
-
 	return AuthResponse{Token: token, User: user}, nil
 }
 
@@ -94,18 +93,18 @@ func (s *Service) RegisterSuperUser(ctx context.Context, req RegisterSuperUserRe
 	}
 
 	user, err := s.repo.CreateUser(ctx, repository.CreateUserParams{
-		Username:     req.Username,
-		Email:        req.Email,
+		Username: req.Username,
+		Email: req.Email,
 		PasswordHash: string(hash),
-		Role:         "super_user",
-		IsVerified:   false,
+		Role: "super_user",
+		IsVerified: false,
 	})
 	if err != nil {
 		return AuthResponse{}, err
 	}
 
 	if err := s.repo.CreateSuperUserProfile(ctx, repository.CreateSuperUserProfileParams{
-		UserID:      user.ID,
+		UserID: user.ID,
 		DisplayName: req.DisplayName,
 		ChannelName: req.ChannelName,
 		PlanBilling: req.PlanBilling,
@@ -124,13 +123,12 @@ func (s *Service) RegisterSuperUser(ctx context.Context, req RegisterSuperUserRe
 	}
 
 	return AuthResponse{
-		Token:                token,
-		User:                 user,
+		Token: token,
+		User: user,
 		RequiresVerification: true,
 		Meta: map[string]interface{}{
 			"verificationToken": verificationToken,
-			"planBilling":       req.PlanBilling,
-			"note":              "send verification token by email transport next",
+			"planBilling": req.PlanBilling,
 		},
 	}, nil
 }
@@ -140,11 +138,9 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 	if err != nil {
 		return AuthResponse{}, errors.New("invalid credentials")
 	}
-
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		return AuthResponse{}, errors.New("invalid credentials")
 	}
-
 	if user.Role == "super_user" && !user.IsVerified {
 		return AuthResponse{}, errors.New("super user must verify email before login")
 	}
@@ -153,7 +149,6 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 	if err != nil {
 		return AuthResponse{}, err
 	}
-
 	return AuthResponse{Token: token, User: user}, nil
 }
 
@@ -168,17 +163,14 @@ func (s *Service) Me(ctx context.Context, tokenString string) (repository.User, 
 	if err != nil || !token.Valid {
 		return repository.User{}, errors.New("invalid token")
 	}
-
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return repository.User{}, errors.New("invalid token claims")
 	}
-
 	subject, _ := claims["sub"].(string)
 	if subject == "" {
 		return repository.User{}, errors.New("missing subject")
 	}
-
 	return s.repo.GetUserByID(ctx, subject)
 }
 
@@ -186,19 +178,18 @@ func (s *Service) GoogleAuthURL() (string, error) {
 	if s.oauth2Conf == nil {
 		return "", errors.New("google oauth is not configured")
 	}
-	state := uuid.NewString()
-	return s.oauth2Conf.AuthCodeURL(state, oauth2.AccessTypeOffline), nil
+	return s.oauth2Conf.AuthCodeURL(uuid.NewString(), oauth2.AccessTypeOffline), nil
 }
 
 func (s *Service) issueJWT(user repository.User) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"sub":   user.ID,
+		"sub": user.ID,
 		"email": user.Email,
-		"role":  user.Role,
-		"iss":   s.cfg.JWTIssuer,
-		"iat":   now.Unix(),
-		"exp":   now.Add(24 * time.Hour).Unix(),
+		"role": user.Role,
+		"iss": s.cfg.JWTIssuer,
+		"iat": now.Unix(),
+		"exp": now.Add(24 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.cfg.JWTSecret))
@@ -206,8 +197,8 @@ func (s *Service) issueJWT(user repository.User) (string, error) {
 
 func (s *Service) PricingExamples() map[string]string {
 	return map[string]string{
-		"coinValue":     "10 coins = 1 USD",
+		"coinValue": "10 coins = 1 USD",
 		"streamExample": "30 minutes = 10 coins",
-		"revenueSplit":  fmt.Sprintf("%d%% creator, %d%% platform, %d%% reserve", 80, 10, 10),
+		"revenueSplit": fmt.Sprintf("%d%% creator, %d%% platform, %d%% reserve", 80, 10, 10),
 	}
 }

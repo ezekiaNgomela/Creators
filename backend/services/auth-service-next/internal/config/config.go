@@ -19,8 +19,7 @@ type Config struct {
 
 func Load() (Config, error) {
 	_ = godotenv.Load()
-
-	cfg := Config{
+	return Config{
 		Port:               getEnv("AUTH_SERVICE_PORT", "8001"),
 		DatabaseURL:        getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/creators?sslmode=disable"),
 		JWTSecret:          getEnv("JWT_SECRET", "change-me"),
@@ -29,9 +28,7 @@ func Load() (Config, error) {
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8001/api/auth/google/callback"),
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
-	}
-
-	return cfg, nil
+	}, nil
 }
 
 func getEnv(key, fallback string) string {

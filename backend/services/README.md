@@ -1,12 +1,15 @@
 # Services
 
-Planned backend services in this monorepo:
-- auth-service
-- user-service
-- subscription-service
-- chat-service
-- post-service
-- stream-service
-- notification-service
+This folder contains independent backend services.
 
-Add each service as an isolated Go module with its own cmd, internal, and Dockerfile.
+## Current services
+- auth-service-next
+- wallet-service
+- subscription-service
+- stream-service
+
+## Planned later
+- user-service
+- post-service
+- chat-service
+- notification-service

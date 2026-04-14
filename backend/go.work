@@ -2,5 +2,8 @@ go 1.23.0
 
 use (
 	./gateway
-	./services/auth-service
+	./services/auth-service-next
+	./services/wallet-service
+	./services/subscription-service
+	./services/stream-service
 )

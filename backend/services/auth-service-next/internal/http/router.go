@@ -24,7 +24,6 @@ func NewRouter(cfg config.Config, svc *service.Service) *gin.Engine {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-
 			res, err := svc.RegisterUser(c.Request.Context(), req)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -39,7 +38,6 @@ func NewRouter(cfg config.Config, svc *service.Service) *gin.Engine {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-
 			res, err := svc.RegisterSuperUser(c.Request.Context(), req)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -54,7 +52,6 @@ func NewRouter(cfg config.Config, svc *service.Service) *gin.Engine {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-
 			res, err := svc.Login(c.Request.Context(), req)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
@@ -87,7 +84,7 @@ func NewRouter(cfg config.Config, svc *service.Service) *gin.Engine {
 
 		api.GET("/google/callback", func(c *gin.Context) {
 			c.JSON(http.StatusNotImplemented, gin.H{
-				"message": "google callback scaffolded; exchange code and upsert oauth user next",
+				"message": "callback scaffolded",
 				"code":    c.Query("code"),
 			})
 		})
@@ -98,7 +95,6 @@ func NewRouter(cfg config.Config, svc *service.Service) *gin.Engine {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 				return
 			}
-
 			user, err := svc.Me(c.Request.Context(), tokenString)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
@@ -114,10 +110,7 @@ func NewRouter(cfg config.Config, svc *service.Service) *gin.Engine {
 
 func extractBearer(header string) string {
 	parts := strings.SplitN(header, " ", 2)
-	if len(parts) != 2 {
-		return ""
-	}
-	if !strings.EqualFold(parts[0], "Bearer") {
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])

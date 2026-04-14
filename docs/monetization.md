@@ -1,43 +1,40 @@
-# Monetization and pricing rules
+# Monetization model
 
-## Coin system
-- 10 coins = 1 USD base conversion
-- wallet transactions should be ledger-based and append-only
+## Coins
+- 10 coins = 1 USD
+- all wallet movements should be ledger-based
 
 ## Streams
-Two charging modes:
-1. pay-per-minute
-2. flat session ticket
+Two options are supported:
+1. pay per minute
+2. flat stream ticket price
 
 Suggested defaults:
 - 1 minute stream = 0.1 coin
-- 30 minute featured session = 10 coins
+- 30 minute stream = 10 coins
 
-The flat session price should override per-minute logic when configured.
-
-## Revenue split
-Default split:
-- 80% creator
-- 10% platform
-- 10% reserve or operations
-
-## Channels and subscriptions
-Super users can create:
+## Channel subscriptions
+Super users can publish:
 - monthly plans
 - yearly plans
 
 Channel subscriptions can unlock:
-- private channel feed
 - subscriber-only posts
 - subscriber-only streams
+- private channel access
 
-## Promotions
-Super users can buy promo campaigns.
+## Paid content
+Super users can sell:
+- paid posts
+- paid media content
+- products or business offers
+
+## Promotion
+Super users can buy impressions.
 Example:
 - 10,000 highlighted impressions = 10 coins
 
-Campaigns should track:
-- purchased impressions
-- delivered impressions
-- start and end timestamps
-- status
+## Revenue split
+- creator: 80%
+- platform: 10%
+- reserve or ops: 10%
