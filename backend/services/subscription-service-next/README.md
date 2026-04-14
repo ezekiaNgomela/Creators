@@ -1,0 +1,1 @@
+Subscription service handles channel membership, paid access, and access checks.
