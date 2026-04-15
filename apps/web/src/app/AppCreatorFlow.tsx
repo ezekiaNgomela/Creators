@@ -10,7 +10,7 @@ export function AppCreatorFlow() {
   if (page === "auth") return <AuthPage />;
   if (page === "home") return <HomeFeed />;
   if (page === "video") {
-    return <VideoPlayer creator="SarahOcean" title="Sunset rooftop session" canEdit onBack={() => setPage("home")} />;
+    return <VideoPlayer creator="SarahOcean" title="Sunset rooftop session" canEdit onBack={() => setPage("home")}  onOpenProfile={() => setPage("profile")} />;
   }
 
   return <LandingHeroReal onGetStarted={() => setPage("auth")} />;
