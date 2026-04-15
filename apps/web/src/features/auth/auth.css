@@ -1,0 +1,10 @@
+.auth-root{display:flex;height:100vh;background:#0B0F1A;color:#fff}
+.auth-left{flex:1;display:flex;flex-direction:column;justify-content:center;padding:60px;background:radial-gradient(circle,#1E3A8A33,transparent)}
+.auth-left h1{font-size:48px}
+.auth-left p{color:#9CA3AF}
+.auth-card{width:400px;margin:auto;padding:40px;background:#111827;border-radius:16px;display:flex;flex-direction:column;gap:16px}
+.auth-card input{padding:12px;border-radius:10px;border:none;background:#1F2937;color:white}
+.primary-btn{background:#3B82F6;border:none;padding:12px;border-radius:10px;color:white;cursor:pointer}
+.divider{text-align:center;color:#6B7280}
+.oauth{padding:10px;border-radius:10px;border:1px solid #374151;background:transparent;color:white;cursor:pointer}
+.switch span{color:#3B82F6;cursor:pointer}
