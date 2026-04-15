@@ -1,0 +1,11 @@
+.landing-root{height:100vh;display:flex;align-items:center;justify-content:center;position:relative;background:#0B0F1A;color:#fff;overflow:hidden}
+.landing-bg{position:absolute;inset:0;background:radial-gradient(circle at 20% 30%, #1E3A8A33, transparent), radial-gradient(circle at 80% 70%, #3B82F633, transparent)}
+.landing-content{text-align:center;z-index:1}
+.landing-title{font-size:64px;font-weight:700}
+.landing-sub{color:#9CA3AF;margin-top:10px}
+.landing-actions{margin-top:30px;display:flex;gap:16px;justify-content:center}
+.landing-stats{margin-top:40px;display:flex;gap:40px;justify-content:center;color:#9CA3AF}
+.landing-stats span{color:#fff;font-size:20px}
+.ui-btn{padding:12px 20px;border-radius:10px;border:none;cursor:pointer}
+.ui-btn--primary{background:#3B82F6;color:#fff}
+.ui-btn--secondary{background:transparent;border:1px solid #3B82F6;color:#3B82F6}
