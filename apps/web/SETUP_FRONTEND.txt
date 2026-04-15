@@ -1,0 +1,3 @@
+Run this to install UI libraries:
+
+npm install axios framer-motion @reduxjs/toolkit react-redux @mui/material @emotion/react @emotion/styled emoji-picker-react tailwindcss postcss autoprefixer
