@@ -1,0 +1,11 @@
+.profile-root{height:100vh;background:#0B0F1A;color:#fff}
+.profile-hero{padding:20px}
+.profile-back{margin-bottom:10px}
+.profile-panel{display:flex;gap:15px;align-items:center}
+.profile-avatar{width:70px;height:70px;border-radius:50%;background:#1E3A8A;display:flex;align-items:center;justify-content:center}
+.profile-copy h1{margin:0}
+.profile-stats{display:flex;gap:15px;margin-top:10px}
+.profile-section{padding:20px}
+.activity-strip{display:flex;gap:10px;overflow-x:auto}
+.activity-card{background:#111;padding:10px;border-radius:10px}
+.activity-card.active{background:#3B82F6}
