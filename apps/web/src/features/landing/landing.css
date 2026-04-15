@@ -1,0 +1,5 @@
+.landing-root{height:100vh;display:flex;align-items:center;justify-content:center;background:#0B0F1A;color:#fff;position:relative}
+.landing-bg{position:absolute;inset:0;background:radial-gradient(circle,#1E3A8A33,transparent)}
+.landing-content{text-align:center;z-index:1}
+.landing-title{font-size:64px}
+.primary-btn{margin-top:20px;padding:12px 20px;background:#3B82F6;border:none;border-radius:10px;color:#fff;cursor:pointer}
