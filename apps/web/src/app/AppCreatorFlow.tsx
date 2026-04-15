@@ -2,7 +2,7 @@ import { useState } from "react";
 import { LandingHeroReal } from "../features/landing/LandingHeroReal";
 import { AuthPage } from "../features/auth/AuthPage";
 import { HomeFeed } from "../features/home/HomeFeed";
-import { VideoPlayer } from "../features/video/VideoPlayer";
+import { VideoPlayerReal } from "../features/video/VideoPlayerReal";
 
 export function AppCreatorFlow() {
   const [page, setPage] = useState<"landing" | "auth" | "home" | "video">("landing");
