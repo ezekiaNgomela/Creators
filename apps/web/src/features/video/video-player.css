@@ -1,1 +1,13 @@
 
+.video-player-root{height:100vh;background:#000;color:#fff;display:flex}
+.video-player-stage{flex:1;position:relative}
+.video-player-topbar{position:absolute;top:0;width:100%;display:flex;justify-content:space-between;padding:10px}
+.video-player-center{display:flex;align-items:center;justify-content:center;height:60%}
+.video-play-orb{font-size:40px}
+.video-player-bottom{position:absolute;bottom:0;width:100%;padding:20px;background:linear-gradient(transparent,#000)}
+.video-control-grid{display:flex;gap:10px}
+.video-control-card{background:#111;padding:10px;border-radius:10px}
+.video-speed-pill{margin:2px;padding:4px}
+.video-speed-pill.active{background:#3B82F6}
+.video-actions-row{margin-top:10px;display:flex;gap:10px}
+.video-action-pill{background:#222;padding:8px;border-radius:10px}
