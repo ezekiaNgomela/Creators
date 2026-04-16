@@ -31,7 +31,7 @@ export function AuthPageConnected({ onSuccess, onBack }: { onSuccess: () => void
         <input placeholder="Email" />
         <input placeholder="Password" type="password" />
         {mode === "register" && <input placeholder="Username" />}
-        <button className="primary-btn" onClick={onSuccess}>
+        <button className="primary-btn" onClick={handleSubmit}>
           {mode === "login" ? "Login" : "Register"}
         </button>
         <div className="divider">OR</div>
