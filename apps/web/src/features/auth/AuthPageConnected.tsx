@@ -1,10 +1,23 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import "./auth.css";
+import { login, register } from "../../services/local-service/authService";
 
 export function AuthPageConnected({ onSuccess, onBack }: { onSuccess: () => void; onBack?: () => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
 
+  const handleSubmit = async () => {
+  try {
+    if (mode === "login") {
+      await login({ email, password });
+    } else {
+      await register({ email, password, username });
+    }
+    onSuccess();
+  } catch (e) {
+    console.error(e);
+  }
+};
   return (
     <div className="auth-root">
       <div className="auth-left">
