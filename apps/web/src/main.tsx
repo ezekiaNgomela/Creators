@@ -1,13 +1,10 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { AppFlowV2 } from "./app/AppFlowV2";
+import "./styles.css";
 
-function App() {
-  return React.createElement('div', { style: { fontFamily: 'sans-serif', padding: '24px' } }, [
-    React.createElement('h1', { key: 'title' }, 'Creators'),
-    React.createElement('p', { key: 'body' }, 'Web app scaffold is ready.')
-  ])
-}
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  React.createElement(React.StrictMode, null, React.createElement(App))
-)
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <AppFlowV2 />
+  </React.StrictMode>
+);
