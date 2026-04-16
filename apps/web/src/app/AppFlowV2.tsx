@@ -1,32 +1,43 @@
 import { useState } from "react";
+import { useSession } from "../hooks/useSession";
 import { LandingHeroReal } from "../features/landing/LandingHeroReal";
 import { AuthPageConnected } from "../features/auth/AuthPageConnected";
-import { HomeFeedConnected } from "../features/home/HomeFeedConnected";
+import { HomeFeedReal } from "../features/home/HomeFeedReal";
 import { VideoPlayerReal } from "../features/video/VideoPlayerReal";
 import { ProfilePage } from "../features/profile/ProfilePage";
 
 export function AppFlowV2() {
-  const [page, setPage] = useState<"landing" | "auth" | "home" | "video" | "profile">("landing");
+  const { user, loading } = useSession();
+  const [page, setPage] = useState<"auth" | "home" | "video" | "profile">("home");
 
-  if (page === "auth") return <AuthPageConnected onSuccess={() => setPage("home")} onBack={() => setPage("landing")} />;
+  if (loading) return <div style={{ color: "white" }}>Loading...</div>;
 
-  if (page === "home") return (
-    <HomeFeedConnected
-      onOpenVideo={() => setPage("video")}
-      onOpenProfile={() => setPage("profile")}
-    />
-  );
+  if (!user) {
+    return <AuthPageConnected onSuccess={() => setPage("home")} />;
+  }
 
-  if (page === "video") return (
-    <VideoPlayerReal
-      creator="SarahOcean"
-      title="Live rooftop session"
-      onBack={() => setPage("home")}
-      onOpenProfile={() => setPage("profile")}
-    />
-  );
+  if (page === "home") {
+    return (
+      <HomeFeedReal
+        onOpenVideo={() => setPage("video")}
+      />
+    );
+  }
 
-  if (page === "profile") return <ProfilePage onBack={() => setPage("home")} />;
+  if (page === "video") {
+    return (
+      <VideoPlayerReal
+        creator="..."
+        title="..."
+        onBack={() => setPage("home")}
+        onOpenProfile={() => setPage("profile")}
+      />
+    );
+  }
 
-  return <LandingHeroReal onGetStarted={() => setPage("auth")} />;
+  if (page === "profile") {
+    return <ProfilePage onBack={() => setPage("home")} />;
+  }
+
+  return null;
 }
