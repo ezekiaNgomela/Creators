@@ -1,4 +1,4 @@
-import { backendClient } from "./backendClient";
+import { MEDIA_BASE_URL } from "./config";
 
 export type FeedItem = {
   id: string;
@@ -11,7 +11,6 @@ export type FeedItem = {
 };
 
 export async function getHomeFeed(): Promise<FeedItem[]> {
-  const res = await backendClient.get("/feed/home");
-  return res.data;
-
+  const res = await fetch(`${MEDIA_BASE_URL}/api/feed/home`);
+  return res.json();
 }
