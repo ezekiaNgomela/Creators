@@ -5,19 +5,23 @@ import { login, register } from "../../services/local-service/authService";
 
 export function AuthPageConnected({ onSuccess, onBack }: { onSuccess: () => void; onBack?: () => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
 
   const handleSubmit = async () => {
-  try {
-    if (mode === "login") {
-      await login({ email, password });
-    } else {
-      await register({ email, password, username });
+    try {
+      if (mode === "login") {
+        await login(email, password);
+      } else {
+        await register({ email, password, username });
+      }
+      onSuccess();
+    } catch (e) {
+      console.error(e);
     }
-    onSuccess();
-  } catch (e) {
-    console.error(e);
-  }
-};
+  };
+
   return (
     <div className="auth-root">
       <div className="auth-left">
@@ -28,15 +32,17 @@ export function AuthPageConnected({ onSuccess, onBack }: { onSuccess: () => void
 
       <motion.div className="auth-card" initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}>
         <h2>{mode === "login" ? "Welcome Back" : "Create Account"}</h2>
-        <input placeholder="Email" />
-        <input placeholder="Password" type="password" />
-        {mode === "register" && <input placeholder="Username" />}
+        <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        {mode === "register" && (
+          <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
+        )}
         <button className="primary-btn" onClick={handleSubmit}>
           {mode === "login" ? "Login" : "Register"}
         </button>
         <div className="divider">OR</div>
-        <button className="oauth google" onClick={onSuccess}>Continue with Google</button>
-        <button className="oauth github" onClick={onSuccess}>Continue with GitHub</button>
+        <button className="oauth google">Continue with Google</button>
+        <button className="oauth github">Continue with GitHub</button>
         <p className="switch">
           {mode === "login" ? "No account?" : "Already have an account?"}
           <span onClick={() => setMode(mode === "login" ? "register" : "login")}>{mode === "login" ? " Register" : " Login"}</span>
