@@ -1,4 +1,4 @@
-import { http } from "./http";
+import { MEDIA_BASE_URL } from "./config";
 
 export type CreateStreamInput = {
   title: string;
@@ -8,7 +8,11 @@ export type CreateStreamInput = {
 };
 
 export async function createStream(input: CreateStreamInput) {
-  return http.post("/streams/create", input).then((res) => res.data);
+  return fetch(`${MEDIA_BASE_URL}/api/streams/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  }).then((r) => r.json());
 }
 
 export async function uploadMedia(file: File, creatorId: string) {
@@ -16,11 +20,12 @@ export async function uploadMedia(file: File, creatorId: string) {
   form.append("file", file);
   form.append("creatorId", creatorId);
 
-  const res = await http.post("/media/uploads", form, {
-    headers: { "Content-Type": "multipart/form-data" },
+  const res = await fetch(`${MEDIA_BASE_URL}/api/media/uploads`, {
+    method: "POST",
+    body: form,
   });
 
-  return res.data;
+  return res.json();
 }
 
 export async function publishUploadedPost(params: {
@@ -29,5 +34,9 @@ export async function publishUploadedPost(params: {
   caption: string;
   mediaType: "video" | "image" | "audio";
 }) {
-  return http.post("/media/posts/publish", params).then((res) => res.data);
+  return fetch(`${MEDIA_BASE_URL}/api/media/posts/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  }).then((r) => r.json());
 }
