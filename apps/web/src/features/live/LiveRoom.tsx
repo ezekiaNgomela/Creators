@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Room, RoomEvent } from "livekit-client";
 import { backendClient } from "../../services/local-service/backendClient";
+import { useSession } from "../../hooks/useSession";
 
-export function LiveRoom({ streamId }: { streamId: string }) {
+export function LiveRoom({ streamId, onBack }: { streamId: string; onBack: () => void }) {
+  const { user } = useSession();
   const [room, setRoom] = useState<Room | null>(null);
   const [connected, setConnected] = useState(false);
 
@@ -10,7 +12,7 @@ export function LiveRoom({ streamId }: { streamId: string }) {
     const init = async () => {
       const res = await backendClient.post("/streams/livekit/token", {
         roomName: `stream_${streamId}`,
-        userId: "viewer-1",
+        userId: user?.id,
         isHost: false,
       });
 
@@ -19,7 +21,7 @@ export function LiveRoom({ streamId }: { streamId: string }) {
       const r = new Room();
       await r.connect(url, token);
 
-      r.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+      r.on(RoomEvent.TrackSubscribed, (track) => {
         if (track.kind === "video") {
           const el = track.attach();
           el.style.width = "100%";
@@ -31,15 +33,16 @@ export function LiveRoom({ streamId }: { streamId: string }) {
       setConnected(true);
     };
 
-    init();
+    if (user) init();
 
     return () => {
       room?.disconnect();
     };
-  }, []);
+  }, [user]);
 
   return (
     <div style={{ background: "black", height: "100vh" }}>
+      <button onClick={onBack} style={{ position: "absolute", top: 10, left: 10, zIndex: 10 }}>← Back</button>
       <div id="video-container" />
       {!connected && <p style={{ color: "white" }}>Connecting...</p>}
     </div>
