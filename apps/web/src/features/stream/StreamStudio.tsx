@@ -1,17 +1,19 @@
 import { useState } from "react";
 import { createStream, prepareMedia, uploadMedia, publishUploadedPost } from "../../services/local-service/streamPipeline";
+import { useSession } from "../../hooks/useSession";
 
 export function StreamStudio() {
+  const { user } = useSession();
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<string>("");
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (!file || !user) return;
     setStatus("Preparing media...");
 
     const prep = await prepareMedia({
       file,
-      creatorId: "creator-1",
+      creatorId: user.id,
       mediaType: "video",
     });
 
@@ -20,7 +22,7 @@ export function StreamStudio() {
 
     setStatus("Publishing...");
     await publishUploadedPost({
-      creatorId: "creator-1",
+      creatorId: user.id,
       assetKey: prep.assetKey,
       caption: "New upload",
       mediaType: "video",
@@ -30,10 +32,12 @@ export function StreamStudio() {
   };
 
   const handleCreateStream = async () => {
+    if (!user) return;
     setStatus("Creating live stream...");
+
     const res = await createStream({
       title: "Live Session",
-      creatorId: "creator-1",
+      creatorId: user.id,
       visibility: "public",
     });
 
