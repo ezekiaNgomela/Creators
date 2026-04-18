@@ -44,6 +44,8 @@ func NewRouter() *gin.Engine {
 			}
 			c.JSON(http.StatusOK, res)
 		})
+
+		api.POST("/livekit/token", GenerateLiveKitToken)
 	}
 
 	return r

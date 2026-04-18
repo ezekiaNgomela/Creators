@@ -18,7 +18,7 @@ type Config struct {
 }
 
 func Load() (Config, error) {
-	_ = godotenv.Load()
+	_ = godotenv.Load("../../../.env", ".env")
 
 	cfg := Config{
 		Port:               getEnv("AUTH_SERVICE_PORT", "8001"),

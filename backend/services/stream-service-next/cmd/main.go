@@ -5,9 +5,12 @@ import (
 	"os"
 
 	httpx "creators/backend/services/stream-service-next/internal/http"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load("../../../.env", ".env")
+
 	port := os.Getenv("STREAM_SERVICE_PORT")
 	if port == "" {
 		port = "8006"

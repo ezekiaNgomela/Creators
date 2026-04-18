@@ -1,6 +1,11 @@
-go 1.23.0
+go 1.25.0
 
 use (
-	./gateway
-	./services/auth-service
+	./pkg
+	./gateway-next
+	./services/auth-service-next
+	./services/post-service-next
+	./services/stream-service-next
+	./services/subscription-service-next
+	./services/wallet-service-next
 )

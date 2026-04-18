@@ -6,10 +6,13 @@
 node_modules/
 dist/
 .vite/
+.expo/
+.expo-shared/
 
 # go
 bin/
 coverage.out
+backend/go.work.sum
 
 # editor
 .vscode/

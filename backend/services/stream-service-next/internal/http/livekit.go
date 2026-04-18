@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	lksdk "github.com/livekit/server-sdk-go/v2"
 	"github.com/gin-gonic/gin"
+	lkauth "github.com/livekit/protocol/auth"
 )
 
 type LiveKitTokenRequest struct {
@@ -26,16 +26,16 @@ func GenerateLiveKitToken(c *gin.Context) {
 	apiSecret := os.Getenv("LIVEKIT_API_SECRET")
 	livekitURL := os.Getenv("LIVEKIT_URL")
 
-	at := lksdk.NewAccessToken(apiKey, apiSecret)
+	at := lkauth.NewAccessToken(apiKey, apiSecret)
 	at.SetIdentity(req.UserID)
 	at.SetValidFor(6 * time.Hour)
 
-	grant := &lksdk.VideoGrant{
-		RoomJoin:     true,
-		Room:         req.RoomName,
-		CanPublish:   req.IsHost,
-		CanSubscribe: true,
+	grant := &lkauth.VideoGrant{
+		RoomJoin: true,
+		Room:     req.RoomName,
 	}
+	grant.SetCanPublish(req.IsHost)
+	grant.SetCanSubscribe(true)
 	at.AddGrant(grant)
 
 	token, err := at.ToJWT()

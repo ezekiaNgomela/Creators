@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -47,7 +48,13 @@ func New(ctx context.Context, databaseURL string) (*Repository, error) {
 		return nil, err
 	}
 
-	return &Repository{pool: pool}, nil
+	repo := &Repository{pool: pool}
+	if err := repo.ApplyMigrations(ctx); err != nil {
+		repo.Close()
+		return nil, err
+	}
+
+	return repo, nil
 }
 
 func (r *Repository) Close() {
@@ -155,15 +162,17 @@ func (r *Repository) VerifyEmailByToken(ctx context.Context, token string) error
 }
 
 func (r *Repository) CreateSuperUserProfile(ctx context.Context, params CreateSuperUserProfileParams) error {
+	slug := strings.ToLower(strings.Join(strings.Fields(params.ChannelName), "-"))
+
 	query := `
 		WITH new_channel AS (
 			INSERT INTO creator_channels (super_user_id, name, slug, visibility)
-			VALUES ($1, $2, lower(replace($2, ' ', '-')), 'private')
+			VALUES ($1, $2, $3, 'private')
 			RETURNING id
 		)
 		INSERT INTO super_user_profiles (user_id, display_name, default_plan_billing, primary_channel_id)
-		SELECT $1, $3, $4, id FROM new_channel
+		SELECT $1, $4, $5, id FROM new_channel
 	`
-	_, err := r.pool.Exec(ctx, query, params.UserID, params.ChannelName, params.DisplayName, params.PlanBilling)
+	_, err := r.pool.Exec(ctx, query, params.UserID, params.ChannelName, slug, params.DisplayName, params.PlanBilling)
 	return err
 }
