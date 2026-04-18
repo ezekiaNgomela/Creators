@@ -1,6 +1,7 @@
 go 1.25.0
 
 use (
+	./devstack
 	./pkg
 	./gateway-next
 	./services/auth-service-next

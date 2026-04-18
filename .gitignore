@@ -13,6 +13,8 @@ dist/
 bin/
 coverage.out
 backend/go.work.sum
+.runtime-bin/
+.runtime-logs/
 
 # editor
 .vscode/

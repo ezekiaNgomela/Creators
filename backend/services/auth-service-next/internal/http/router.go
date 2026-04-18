@@ -116,8 +116,16 @@ func googleURLHandler(svc *service.Service) gin.HandlerFunc {
 
 func googleCallbackHandler(svc *service.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		redirectURL, err := svc.HandleGoogleCallback(c.Request.Context(), c.Query("code"), c.Query("state"))
-		_ = err
+		redirectURL, err := svc.HandleGoogleCallback(
+			c.Request.Context(),
+			c.Query("code"),
+			c.Query("state"),
+			c.Query("error"),
+			c.Query("error_description"),
+		)
+		if err != nil {
+			_ = c.Error(err)
+		}
 		c.Redirect(http.StatusTemporaryRedirect, redirectURL)
 	}
 }

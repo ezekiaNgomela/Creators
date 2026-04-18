@@ -7,6 +7,9 @@ down:
 run-auth:
 	cd backend/services/auth-service-next && go run ./cmd/main.go
 
+run-backend:
+	powershell -ExecutionPolicy Bypass -File .\run-backend.ps1
+
 run-gateway:
 	cd backend/gateway-next && go run ./cmd/main.go
 

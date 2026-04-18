@@ -215,12 +215,19 @@ func (s *Service) GoogleAuthURL() (string, error) {
 	return s.oauth2Conf.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", "select_account")), nil
 }
 
-func (s *Service) HandleGoogleCallback(ctx context.Context, code string, state string) (string, error) {
+func (s *Service) HandleGoogleCallback(ctx context.Context, code string, state string, providerError string, providerErrorDescription string) (string, error) {
+	if strings.TrimSpace(providerError) != "" {
+		message := "Google sign-in was cancelled."
+		if strings.TrimSpace(providerErrorDescription) != "" {
+			message = providerErrorDescription
+		}
+		return s.googleErrorRedirect(message), fmt.Errorf("google oauth returned %q", providerError)
+	}
 	if s.oauth2Conf == nil {
-		return "", errors.New("google oauth is not configured")
+		return s.googleErrorRedirect("Google sign-in is not configured."), errors.New("google oauth is not configured")
 	}
 	if strings.TrimSpace(code) == "" {
-		return "", errors.New("missing google authorization code")
+		return s.googleErrorRedirect("Missing Google authorization code."), errors.New("missing google authorization code")
 	}
 
 	redirectTarget, err := s.parseGoogleState(state)
