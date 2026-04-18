@@ -18,98 +18,126 @@ func NewRouter(cfg config.Config, svc *service.Service) *gin.Engine {
 
 	api := r.Group("/api/auth")
 	{
-		api.POST("/register/user", func(c *gin.Context) {
-			var req service.RegisterUserRequest
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
+		api.POST("/register/user", registerUserHandler(svc))
+		api.POST("/register/super-user", registerSuperUserHandler(svc))
+		api.POST("/login", loginHandler(svc))
+		api.GET("/verify-email", verifyEmailHandler(svc))
+		api.GET("/google/url", googleURLHandler(svc))
+		api.GET("/google/callback", googleCallbackHandler())
+		api.GET("/me", meHandler(svc))
+	}
 
-			res, err := svc.RegisterUser(c.Request.Context(), req)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusCreated, res)
-		})
-
-		api.POST("/register/super-user", func(c *gin.Context) {
-			var req service.RegisterSuperUserRequest
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			res, err := svc.RegisterSuperUser(c.Request.Context(), req)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusCreated, res)
-		})
-
-		api.POST("/login", func(c *gin.Context) {
-			var req service.LoginRequest
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			res, err := svc.Login(c.Request.Context(), req)
-			if err != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, res)
-		})
-
-		api.GET("/verify-email", func(c *gin.Context) {
-			token := c.Query("token")
-			if token == "" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "missing token"})
-				return
-			}
-			if err := svc.VerifyEmail(c.Request.Context(), token); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"message": "email verified"})
-		})
-
-		api.GET("/google/url", func(c *gin.Context) {
-			url, err := svc.GoogleAuthURL()
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"url": url})
-		})
-
-		api.GET("/google/callback", func(c *gin.Context) {
-			c.JSON(http.StatusNotImplemented, gin.H{
-				"message": "google callback scaffolded; exchange code and upsert oauth user next",
-				"code":    c.Query("code"),
-			})
-		})
-
-		api.GET("/me", func(c *gin.Context) {
-			tokenString := extractBearer(c.GetHeader("Authorization"))
-			if tokenString == "" {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
-				return
-			}
-
-			user, err := svc.Me(c.Request.Context(), tokenString)
-			if err != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-				return
-			}
-			c.JSON(http.StatusOK, user)
-		})
+	google := r.Group("/auth/google")
+	{
+		google.GET("/url", googleURLHandler(svc))
+		google.GET("/callback", googleCallbackHandler())
 	}
 
 	_ = cfg
 	return r
+}
+
+func registerUserHandler(svc *service.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req service.RegisterUserRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		res, err := svc.RegisterUser(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, res)
+	}
+}
+
+func registerSuperUserHandler(svc *service.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req service.RegisterSuperUserRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		res, err := svc.RegisterSuperUser(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, res)
+	}
+}
+
+func loginHandler(svc *service.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req service.LoginRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		res, err := svc.Login(c.Request.Context(), req)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, res)
+	}
+}
+
+func verifyEmailHandler(svc *service.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.Query("token")
+		if token == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing token"})
+			return
+		}
+		if err := svc.VerifyEmail(c.Request.Context(), token); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "email verified"})
+	}
+}
+
+func googleURLHandler(svc *service.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		url, err := svc.GoogleAuthURL()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"url": url})
+	}
+}
+
+func googleCallbackHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusNotImplemented, gin.H{
+			"message": "google callback scaffolded; exchange code and upsert oauth user next",
+			"code":    c.Query("code"),
+		})
+	}
+}
+
+func meHandler(svc *service.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenString := extractBearer(c.GetHeader("Authorization"))
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			return
+		}
+
+		user, err := svc.Me(c.Request.Context(), tokenString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, user)
+	}
 }
 
 func extractBearer(header string) string {

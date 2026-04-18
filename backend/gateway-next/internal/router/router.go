@@ -36,17 +36,6 @@ func mapService(api *gin.RouterGroup, service upstream.Service) {
 		panic(err)
 	}
 
-	api.GET("/"+service.Route+"/health", func(c *gin.Context) {
-		c.Request.URL.Path = "/health"
-		c.Request.URL.RawPath = ""
-		c.Request.RequestURI = "/health"
-		proxy.ServeHTTP(c.Writer, c.Request)
-	})
-
-	api.Any("/"+service.Route, func(c *gin.Context) {
-		proxy.ServeHTTP(c.Writer, c.Request)
-	})
-
 	api.Any("/"+service.Route+"/*proxyPath", func(c *gin.Context) {
 		proxy.ServeHTTP(c.Writer, c.Request)
 	})

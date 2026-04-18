@@ -21,13 +21,13 @@ func Load() (Config, error) {
 	_ = godotenv.Load("../../../.env", ".env")
 
 	cfg := Config{
-		Port:               getEnv("AUTH_SERVICE_PORT", "8001"),
+		Port:               getEnv("AUTH_SERVICE_PORT", "4001"),
 		DatabaseURL:        getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/creators?sslmode=disable"),
 		JWTSecret:          getEnv("JWT_SECRET", "change-me"),
 		JWTIssuer:          getEnv("JWT_ISSUER", "creators-auth"),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8001/api/auth/google/callback"),
+		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", "http://localhost:4001/auth/google/callback"),
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:5173"),
 	}
 
