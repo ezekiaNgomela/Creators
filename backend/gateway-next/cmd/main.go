@@ -5,12 +5,15 @@ import (
 	"os"
 
 	"creators/backend/gateway-next/internal/router"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load("../../.env", ".env")
+
 	port := os.Getenv("GATEWAY_PORT")
 	if port == "" {
-		port = "8000"
+		port = "18000"
 	}
 
 	r := router.New()

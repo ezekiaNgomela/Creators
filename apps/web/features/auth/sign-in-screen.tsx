@@ -1,21 +1,58 @@
-import { useState } from "react";
-import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, Button, Snackbar, Text, TextInput } from "react-native-paper";
 import { ScrollView, useWindowDimensions, View } from "react-native";
 import { GlassPanel } from "@/components/glass-panel";
 import { ScreenBackground } from "@/components/screen-background";
+import { getGoogleAuthURL, type AuthResponse } from "@/lib/api";
 import { useSession } from "@/providers/session-provider";
+
+function decodeAuthPayload(encoded: string): AuthResponse {
+  const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const json = typeof atob === "function" ? atob(padded) : "";
+  return JSON.parse(json) as AuthResponse;
+}
 
 export function SignInScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ auth?: string | string[]; oauthError?: string | string[] }>();
   const { width } = useWindowDimensions();
   const compact = width < 920;
-  const { signIn } = useSession();
+  const handledOAuth = useRef(false);
+  const { signIn, applyAuthResponse } = useSession();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const oauthError = Array.isArray(params.oauthError) ? params.oauthError[0] : params.oauthError;
+    if (oauthError) {
+      setMessage(oauthError);
+    }
+  }, [params.oauthError]);
+
+  useEffect(() => {
+    if (handledOAuth.current) {
+      return;
+    }
+    const authPayload = Array.isArray(params.auth) ? params.auth[0] : params.auth;
+    if (!authPayload) {
+      return;
+    }
+
+    handledOAuth.current = true;
+    try {
+      const response = decodeAuthPayload(authPayload);
+      applyAuthResponse(response);
+      router.replace("/studio");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to finish Google sign-in.");
+    }
+  }, [applyAuthResponse, params.auth, router]);
 
   async function handleSubmit() {
     setBusy(true);
@@ -26,6 +63,22 @@ export function SignInScreen() {
       setMessage(error instanceof Error ? error.message : "Unable to sign in.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setGoogleBusy(true);
+    try {
+      const response = await getGoogleAuthURL();
+      if (typeof window !== "undefined") {
+        window.location.href = response.url;
+        return;
+      }
+      setMessage("Google sign-in is currently wired for the web flow.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to start Google sign-in.");
+    } finally {
+      setGoogleBusy(false);
     }
   }
 
@@ -88,12 +141,19 @@ export function SignInScreen() {
             <Button
               mode="contained"
               onPress={handleSubmit}
-              disabled={busy}
+              disabled={busy || googleBusy}
               contentStyle={{ paddingVertical: 8 }}
               buttonColor="#f59e0b"
               textColor="#111827"
             >
               {busy ? "Signing in..." : "Sign in"}
+            </Button>
+            <Button
+              mode="outlined"
+              onPress={handleGoogleSignIn}
+              disabled={busy || googleBusy}
+            >
+              {googleBusy ? "Opening Google..." : "Continue with Google"}
             </Button>
             {busy ? <ActivityIndicator animating color="#fbbf24" /> : null}
             <Button mode="text" onPress={() => router.replace("/join")}>

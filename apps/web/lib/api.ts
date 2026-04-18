@@ -1,5 +1,5 @@
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:8000/api";
+  process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:18000/api";
 
 type RequestOptions = RequestInit & {
   token?: string;
@@ -64,6 +64,10 @@ export function login(payload: { email: string; password: string }) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getGoogleAuthURL() {
+  return request<{ url: string }>("/auth/google/url");
 }
 
 export function registerUser(payload: { username: string; email: string; password: string }) {

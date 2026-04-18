@@ -17,6 +17,7 @@ type SessionContextValue = {
   token: string;
   user: AuthUser | null;
   signIn: (payload: { email: string; password: string }) => Promise<void>;
+  applyAuthResponse: (response: AuthResponse) => void;
   registerUser: (payload: { username: string; email: string; password: string }) => Promise<void>;
   registerCreator: (payload: {
     username: string;
@@ -39,10 +40,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [token, setToken] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
 
-  async function signIn(payload: { email: string; password: string }) {
-    const response = await login(payload);
+  function applyAuthResponse(response: AuthResponse) {
     setToken(response.token);
     setUser(response.user);
+  }
+
+  async function signIn(payload: { email: string; password: string }) {
+    const response = await login(payload);
+    applyAuthResponse(response);
   }
 
   async function handleRegisterUser(payload: {
@@ -51,8 +56,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     password: string;
   }) {
     const response = await registerUser(payload);
-    setToken(response.token);
-    setUser(response.user);
+    applyAuthResponse(response);
   }
 
   async function handleRegisterCreator(payload: {
@@ -79,6 +83,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       token,
       user,
       signIn,
+      applyAuthResponse,
       registerUser: handleRegisterUser,
       registerCreator: handleRegisterCreator,
       signOut,

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -36,6 +37,13 @@ type CreateSuperUserProfileParams struct {
 	DisplayName string
 	ChannelName string
 	PlanBilling string
+}
+
+type OAuthAccountParams struct {
+	UserID         string
+	Provider       string
+	ProviderUserID string
+	ProviderEmail  string
 }
 
 func New(ctx context.Context, databaseURL string) (*Repository, error) {
@@ -132,6 +140,29 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (User, error) {
 	return user, nil
 }
 
+func (r *Repository) GetUserByOAuthAccount(ctx context.Context, provider string, providerUserID string) (User, error) {
+	query := `
+		SELECT u.id::text, u.username, u.email, u.role, u.status, u.is_verified, u.password_hash
+		FROM oauth_accounts oa
+		INNER JOIN users u ON u.id = oa.user_id
+		WHERE oa.provider = $1 AND oa.provider_user_id = $2
+	`
+	var user User
+	err := r.pool.QueryRow(ctx, query, provider, providerUserID).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.Role,
+		&user.Status,
+		&user.IsVerified,
+		&user.PasswordHash,
+	)
+	if err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
 func (r *Repository) CreateEmailVerificationToken(ctx context.Context, userID string, token string, expiresAt time.Time) error {
 	query := `
 		INSERT INTO verification_tokens (user_id, token, expires_at)
@@ -161,6 +192,11 @@ func (r *Repository) VerifyEmailByToken(ctx context.Context, token string) error
 	return err
 }
 
+func (r *Repository) MarkUserVerified(ctx context.Context, userID string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE users SET is_verified = TRUE, updated_at = NOW() WHERE id = $1`, userID)
+	return err
+}
+
 func (r *Repository) CreateSuperUserProfile(ctx context.Context, params CreateSuperUserProfileParams) error {
 	slug := strings.ToLower(strings.Join(strings.Fields(params.ChannelName), "-"))
 
@@ -175,4 +211,19 @@ func (r *Repository) CreateSuperUserProfile(ctx context.Context, params CreateSu
 	`
 	_, err := r.pool.Exec(ctx, query, params.UserID, params.ChannelName, slug, params.DisplayName, params.PlanBilling)
 	return err
+}
+
+func (r *Repository) UpsertOAuthAccount(ctx context.Context, params OAuthAccountParams) error {
+	query := `
+		INSERT INTO oauth_accounts (user_id, provider, provider_user_id, provider_email)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (provider, provider_user_id)
+		DO UPDATE SET provider_email = EXCLUDED.provider_email
+	`
+	_, err := r.pool.Exec(ctx, query, params.UserID, params.Provider, params.ProviderUserID, params.ProviderEmail)
+	return err
+}
+
+func IsNotFound(err error) bool {
+	return errors.Is(err, pgx.ErrNoRows)
 }

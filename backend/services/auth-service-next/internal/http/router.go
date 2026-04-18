@@ -23,14 +23,14 @@ func NewRouter(cfg config.Config, svc *service.Service) *gin.Engine {
 		api.POST("/login", loginHandler(svc))
 		api.GET("/verify-email", verifyEmailHandler(svc))
 		api.GET("/google/url", googleURLHandler(svc))
-		api.GET("/google/callback", googleCallbackHandler())
+		api.GET("/google/callback", googleCallbackHandler(svc))
 		api.GET("/me", meHandler(svc))
 	}
 
 	google := r.Group("/auth/google")
 	{
 		google.GET("/url", googleURLHandler(svc))
-		google.GET("/callback", googleCallbackHandler())
+		google.GET("/callback", googleCallbackHandler(svc))
 	}
 
 	_ = cfg
@@ -114,12 +114,11 @@ func googleURLHandler(svc *service.Service) gin.HandlerFunc {
 	}
 }
 
-func googleCallbackHandler() gin.HandlerFunc {
+func googleCallbackHandler(svc *service.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(http.StatusNotImplemented, gin.H{
-			"message": "google callback scaffolded; exchange code and upsert oauth user next",
-			"code":    c.Query("code"),
-		})
+		redirectURL, err := svc.HandleGoogleCallback(c.Request.Context(), c.Query("code"), c.Query("state"))
+		_ = err
+		c.Redirect(http.StatusTemporaryRedirect, redirectURL)
 	}
 }
 
