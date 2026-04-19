@@ -10,6 +10,9 @@ run-auth:
 run-backend:
 	powershell -ExecutionPolicy Bypass -File .\run-backend.ps1
 
+run-project:
+	powershell -ExecutionPolicy Bypass -File .\run-project.ps1
+
 run-gateway:
 	cd backend/gateway-next && go run ./cmd/main.go
 
