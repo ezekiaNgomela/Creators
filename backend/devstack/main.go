@@ -39,9 +39,15 @@ type runningService struct {
 
 func main() {
 	log.SetFlags(0)
+	if os.Getenv("GIN_MODE") == "" {
+		_ = os.Setenv("GIN_MODE", "release")
+	}
 
 	if err := loadEnvFile(); err != nil {
 		log.Printf("[warn] %v", err)
+	}
+	if err := checkPostgres(); err != nil {
+		log.Fatalf("[error] %v", err)
 	}
 
 	services := []serviceDefinition{
@@ -181,4 +187,17 @@ func envOrFallback(key string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func checkPostgres() error {
+	host := envOrFallback("POSTGRES_HOST", "127.0.0.1")
+	port := envOrFallback("POSTGRES_PORT", "5432")
+	address := net.JoinHostPort(host, port)
+
+	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	if err != nil {
+		return fmt.Errorf("postgres is not reachable at %s; start Docker Desktop, then run `docker compose up -d postgres redis minio`", address)
+	}
+	_ = conn.Close()
+	return nil
 }
