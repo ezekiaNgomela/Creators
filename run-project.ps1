@@ -221,7 +221,9 @@ try {
     }
 
     Write-Step "starting Expo web frontend"
-    $webProcess = Start-LoggedProcess "web" $npx "expo start --web --port $WebPort --non-interactive" $webRoot
+    $env:CI = "1"
+    $env:EXPO_NO_TELEMETRY = "1"
+    $webProcess = Start-LoggedProcess "web" $npx "expo start --web --port $WebPort" $webRoot
 
     $webUrl = "http://localhost:$WebPort"
     Wait-Http "web app" $webUrl 90 | Out-Null
