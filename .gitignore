@@ -1,29 +1,5 @@
-# env
 .env
-.env.local
-
-# node
 node_modules/
 dist/
-.vite/
-.expo/
-.expo-shared/
-
-# go
-bin/
-coverage.out
-backend/go.work.sum
-.runtime-bin/
-.runtime-logs/
-
-# editor
-.vscode/
-.idea/
-*.swp
-
-# os
-.DS_Store
-Thumbs.db
-
-# misc
+coverage/
 *.log
