@@ -17,6 +17,7 @@ import {
 } from "./api";
 
 type AuthMode = "login" | "register";
+type HomeView = "feed" | "live" | "posts" | "studio";
 
 const featureRows = [
   {
@@ -34,6 +35,13 @@ const featureRows = [
 ];
 
 const moodOptions = ["Update", "Launch", "Question", "Behind the scenes"];
+
+const homeViews: Array<{ id: HomeView; label: string }> = [
+  { id: "feed", label: "Feed" },
+  { id: "live", label: "Live" },
+  { id: "posts", label: "Posts" },
+  { id: "studio", label: "Studio" },
+];
 
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -230,6 +238,9 @@ function Home({
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [feedError, setFeedError] = useState("");
+  const [activeView, setActiveView] = useState<HomeView>("feed");
+
+  const activeLabel = homeViews.find((item) => item.id === activeView)?.label ?? "Feed";
 
   async function loadFeed() {
     setLoading(true);
@@ -274,10 +285,17 @@ function Home({
           <span>Creators</span>
         </a>
         <nav className="home-nav">
-          <a className="is-active" href="#feed">Feed</a>
-          <a href="#live">Live</a>
-          <a href="#posts">Posts</a>
-          <a href="#studio">Studio</a>
+          {homeViews.map((item) => (
+            <button
+              aria-current={activeView === item.id ? "page" : undefined}
+              className={activeView === item.id ? "is-active" : ""}
+              key={item.id}
+              type="button"
+              onClick={() => setActiveView(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
         </nav>
         <div className="sidebar-status">
           <span className={health?.status === "ok" ? "status-dot is-up" : "status-dot"} />
@@ -291,9 +309,9 @@ function Home({
       <section className="home-main" id="feed">
         <header className="home-header">
           <div>
-            <p className="section-kicker">Home</p>
-            <h1>Live feed</h1>
-            <p>Welcome back, {user.name}. See what creators are doing now and publish your next update.</p>
+            <p className="section-kicker">Home - {activeLabel}</p>
+            <h1>{activeView === "feed" ? "For you" : activeLabel}</h1>
+            <p>{homeViewCopy(activeView, user.name)}</p>
           </div>
           <div className="home-actions">
             <button className="ghost-button on-light" type="button" onClick={() => void loadFeed()} disabled={loading}>
@@ -307,62 +325,46 @@ function Home({
 
         {feedError ? <p className="feed-error">{feedError}</p> : null}
 
-        <section className="composer-panel" id="posts" aria-label="Create post">
-          <div>
-            <span className="avatar" aria-hidden="true">{initials(user.name)}</span>
-          </div>
-          <form className="composer-form" onSubmit={(event) => void handlePublish(event)}>
-            <textarea
-              value={body}
-              maxLength={500}
-              rows={4}
-              placeholder="Share a launch note, live thought, or studio update..."
-              onChange={(event) => setBody(event.target.value)}
-              required
-            />
-            <div className="composer-tools">
-              <label>
-                <span>Mood</span>
-                <select value={mood} onChange={(event) => setMood(event.target.value)}>
-                  {moodOptions.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-              <span className="character-count">{body.length}/500</span>
-              <button className="solid-button" type="submit" disabled={publishing || body.trim().length === 0}>
-                {publishing ? "Publishing..." : "Publish"}
-              </button>
-            </div>
-          </form>
-        </section>
-
-        <section className="post-feed" aria-label="Post feed">
-          <div className="feed-heading">
-            <h2>Post feed</h2>
-            <span>{posts.length} updates</span>
-          </div>
-          {loading ? <p className="feed-muted">Loading the latest creator posts...</p> : null}
-          {!loading && posts.length === 0 ? (
-            <div className="empty-feed">
-              <h3>No posts yet</h3>
-              <p>Publish the first update and it will appear here for the signed-in home feed.</p>
-            </div>
+        <div className="home-outlet" aria-live="polite">
+          {activeView === "feed" ? (
+            <>
+              <LiveStoryStrip liveRooms={liveRooms} onOpenLive={() => setActiveView("live")} />
+              <Composer
+                body={body}
+                mood={mood}
+                publishing={publishing}
+                user={user}
+                onBodyChange={setBody}
+                onMoodChange={setMood}
+                onPublish={handlePublish}
+              />
+              <PostFeed loading={loading} posts={posts} title="For you" />
+            </>
           ) : null}
-          {posts.map((post) => (
-            <article className="feed-post" key={post.id}>
-              <span className="avatar" aria-hidden="true">{initials(post.author.name)}</span>
-              <div className="post-content">
-                <div className="post-meta">
-                  <strong>{post.author.name}</strong>
-                  <span>{post.mood}</span>
-                  <span>{timeAgo(post.createdAt)}</span>
-                </div>
-                <p>{post.body}</p>
-              </div>
-            </article>
-          ))}
-        </section>
+
+          {activeView === "live" ? (
+            <LiveOutlet liveRooms={liveRooms} />
+          ) : null}
+
+          {activeView === "posts" ? (
+            <>
+              <Composer
+                body={body}
+                mood={mood}
+                publishing={publishing}
+                user={user}
+                onBodyChange={setBody}
+                onMoodChange={setMood}
+                onPublish={handlePublish}
+              />
+              <PostFeed loading={loading} posts={posts} title="Latest posts" />
+            </>
+          ) : null}
+
+          {activeView === "studio" ? (
+            <StudioOutlet health={health} posts={posts} user={user} />
+          ) : null}
+        </div>
       </section>
 
       <aside className="live-rail" id="live" aria-label="Live feed">
@@ -370,17 +372,7 @@ function Home({
           <p className="section-kicker">Now</p>
           <h2>Live rooms</h2>
         </div>
-        {liveRooms.map((room) => (
-          <article className={`live-room accent-${room.accent}`} key={room.id}>
-            <div className="live-room-top">
-              <span>{room.status}</span>
-              <strong>{room.viewers}</strong>
-            </div>
-            <h3>{room.title}</h3>
-            <p>{room.host} · {room.topic}</p>
-            <small>{room.status === "live" ? `Started ${timeAgo(room.startsAt)}` : `Starts ${timeAgo(room.startsAt)}`}</small>
-          </article>
-        ))}
+        <LiveRoomList compact liveRooms={liveRooms} />
       </aside>
 
       {notice ? (
@@ -392,6 +384,167 @@ function Home({
         </div>
       ) : null}
     </main>
+  );
+}
+
+function LiveStoryStrip({ liveRooms, onOpenLive }: { liveRooms: LiveRoom[]; onOpenLive: () => void }) {
+  return (
+    <section className="live-story-strip" aria-label="Live stories">
+      {liveRooms.map((room) => (
+        <button className="live-story" key={room.id} type="button" onClick={onOpenLive}>
+          <span className="story-ring">
+            <img alt={`${room.host} profile`} src={profileImageFor(room.host)} />
+          </span>
+          <span className="story-name">{room.host}</span>
+          <span className="story-time">{room.status === "live" ? timeAgo(room.startsAt) : `in ${timeUntil(room.startsAt)}`}</span>
+        </button>
+      ))}
+    </section>
+  );
+}
+
+function Composer({
+  body,
+  mood,
+  publishing,
+  user,
+  onBodyChange,
+  onMoodChange,
+  onPublish,
+}: {
+  body: string;
+  mood: string;
+  publishing: boolean;
+  user: AuthUser;
+  onBodyChange: (value: string) => void;
+  onMoodChange: (value: string) => void;
+  onPublish: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
+}) {
+  return (
+    <section className="composer-panel" id="posts" aria-label="Create post">
+      <img className="avatar-img" alt="" src={profileImageFor(user.name)} />
+      <form className="composer-form" onSubmit={(event) => onPublish(event)}>
+        <textarea
+          value={body}
+          maxLength={500}
+          rows={4}
+          placeholder="What are you making right now?"
+          onChange={(event) => onBodyChange(event.target.value)}
+          required
+        />
+        <div className="composer-tools">
+          <label>
+            <span>Mood</span>
+            <select value={mood} onChange={(event) => onMoodChange(event.target.value)}>
+              {moodOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+          <span className="character-count">{body.length}/500</span>
+          <button className="solid-button" type="submit" disabled={publishing || body.trim().length === 0}>
+            {publishing ? "Posting..." : "Post"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function PostFeed({ loading, posts, title }: { loading: boolean; posts: FeedPost[]; title: string }) {
+  return (
+    <section className="post-feed" aria-label="Post feed">
+      <div className="feed-heading">
+        <h2>{title}</h2>
+        <span>{posts.length} updates</span>
+      </div>
+      {loading ? <p className="feed-muted">Loading the latest creator posts...</p> : null}
+      {!loading && posts.length === 0 ? (
+        <div className="empty-feed">
+          <h3>No posts yet</h3>
+          <p>Publish the first update and it will appear here for the signed-in home feed.</p>
+        </div>
+      ) : null}
+      {posts.map((post) => (
+        <article className="feed-post social-post" key={post.id}>
+          <header className="social-post-header">
+            <img className="avatar-img" alt="" src={profileImageFor(post.author.name)} />
+            <div>
+              <strong>{post.author.name}</strong>
+              <span>{post.mood} - {timeAgo(post.createdAt)}</span>
+            </div>
+          </header>
+          <div className="post-media" style={{ backgroundImage: `url("${postImageFor(post.id)}")` }}>
+            <div className="post-media-overlay">
+              <span>{post.mood}</span>
+              <p>{post.body}</p>
+            </div>
+          </div>
+          <div className="post-actions" aria-label="Post actions">
+            <button type="button" title="Like">Like</button>
+            <button type="button" title="Comment">Reply</button>
+            <button type="button" title="Share">Share</button>
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function LiveOutlet({ liveRooms }: { liveRooms: LiveRoom[] }) {
+  return (
+    <section className="live-outlet">
+      <LiveStoryStrip liveRooms={liveRooms} onOpenLive={() => undefined} />
+      <LiveRoomList liveRooms={liveRooms} />
+    </section>
+  );
+}
+
+function LiveRoomList({ compact = false, liveRooms }: { compact?: boolean; liveRooms: LiveRoom[] }) {
+  return (
+    <div className={compact ? "live-room-list is-compact" : "live-room-list"}>
+      {liveRooms.map((room) => (
+        <article className={`live-room accent-${room.accent}`} key={room.id}>
+          <img className="live-cover" alt={`${room.host} profile`} src={profileImageFor(room.host)} />
+          <div className="live-room-body">
+            <div className="live-room-top">
+              <span>{room.status}</span>
+              <strong>{room.viewers} watching</strong>
+            </div>
+            <h3>{room.title}</h3>
+            <p>{room.host}</p>
+            <small>{room.status === "live" ? `Made live ${timeAgo(room.startsAt)}` : `Starts in ${timeUntil(room.startsAt)}`}</small>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function StudioOutlet({ health, posts, user }: { health: HealthResponse | null; posts: FeedPost[]; user: AuthUser }) {
+  return (
+    <section className="studio-outlet">
+      <div className="studio-profile">
+        <img className="studio-cover" alt="" src={postImageFor(user.id)} />
+        <img className="studio-avatar" alt="" src={profileImageFor(user.name)} />
+        <h2>{user.name}</h2>
+        <p>{user.email}</p>
+      </div>
+      <div className="studio-metrics">
+        <div>
+          <strong>{posts.length}</strong>
+          <span>posts</span>
+        </div>
+        <div>
+          <strong>{health?.status === "ok" ? "Live" : "Syncing"}</strong>
+          <span>backend</span>
+        </div>
+        <div>
+          <strong>{user.provider}</strong>
+          <span>auth</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -511,16 +664,6 @@ function AuthDialog({
   );
 }
 
-function initials(name: string) {
-  const letters = name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-  return letters || "C";
-}
-
 function timeAgo(value: string) {
   const date = new Date(value);
   const seconds = Math.round((date.getTime() - Date.now()) / 1000);
@@ -542,4 +685,62 @@ function timeAgo(value: string) {
     }
   }
   return formatter.format(seconds, "second");
+}
+
+function timeUntil(value: string) {
+  const date = new Date(value);
+  const seconds = Math.max(0, Math.round((date.getTime() - Date.now()) / 1000));
+  if (seconds < 60) {
+    return "a moment";
+  }
+  if (seconds < 3600) {
+    return `${Math.round(seconds / 60)} minutes`;
+  }
+  if (seconds < 86400) {
+    return `${Math.round(seconds / 3600)} hours`;
+  }
+  return `${Math.round(seconds / 86400)} days`;
+}
+
+function homeViewCopy(view: HomeView, name: string) {
+  switch (view) {
+    case "live":
+      return "Creators currently live, with profile covers, host names, and when each room started.";
+    case "posts":
+      return "Write updates and watch the post feed refresh from the backend.";
+    case "studio":
+      return `Your signed-in profile and service state, ${name}.`;
+    default:
+      return `Welcome back, ${name}. Swipe the live covers, post an update, and keep moving.`;
+  }
+}
+
+function profileImageFor(seed: string) {
+  const images = [
+    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=240&q=80",
+    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80",
+    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=240&q=80",
+    "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=240&q=80",
+    "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=240&q=80",
+  ];
+  return images[indexFor(seed, images.length)];
+}
+
+function postImageFor(seed: number) {
+  const images = [
+    "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=1000&q=82",
+  ];
+  return images[Math.abs(seed) % images.length];
+}
+
+function indexFor(value: string, length: number) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash) % length;
 }
