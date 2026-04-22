@@ -8,10 +8,12 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\start-local.ps1") `
-    -NoInstall:$NoInstall `
-    -NoBackend:$NoBackend `
-    -NoFrontend:$NoFrontend `
-    -ServicesOnly:$ServicesOnly
+$arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $repoRoot "scripts\start-local.ps1"))
+if ($NoInstall) { $arguments += "-NoInstall" }
+if ($NoBackend) { $arguments += "-NoBackend" }
+if ($NoFrontend) { $arguments += "-NoFrontend" }
+if ($ServicesOnly) { $arguments += "-ServicesOnly" }
+
+& powershell @arguments
 
 exit $LASTEXITCODE

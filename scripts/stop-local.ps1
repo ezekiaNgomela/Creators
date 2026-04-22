@@ -26,6 +26,7 @@ if (Test-Path $stateFile) {
     Stop-Pid $state.backend.pid "api"
     Stop-Pid $state.services.minio.pid "minio"
     Stop-Pid $state.services.redis.pid "redis"
+    Stop-Pid $state.services.postgres.pid "postgres"
 }
 
 $pgCtl = Get-Command pg_ctl.exe -ErrorAction SilentlyContinue
@@ -41,6 +42,15 @@ $pgData = Join-Path $runtimeDir "postgres-data"
 if ($pgCtl -and (Test-Path (Join-Path $pgData "PG_VERSION"))) {
     Write-Step "stopping Postgres"
     & $pgCtl -D $pgData stop -m fast | Out-Null
+}
+
+$listener = Get-NetTCPConnection -State Listen -LocalPort 15432 -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($listener) {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)" -ErrorAction SilentlyContinue
+    if ($process -and $process.CommandLine -like "*$pgData*") {
+        Write-Step "stopping Postgres listener pid=$($listener.OwningProcess)"
+        Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue

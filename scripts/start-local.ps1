@@ -13,8 +13,10 @@ $toolsDir = Join-Path $runtimeDir "tools"
 $downloadsDir = Join-Path $runtimeDir "downloads"
 $logDir = Join-Path $runtimeDir "logs"
 $stateFile = Join-Path $runtimeDir "local-dev.json"
+$stageFile = Join-Path $logDir "start-local.stage.log"
 
 New-Item -ItemType Directory -Force $runtimeDir, $toolsDir, $downloadsDir, $logDir | Out-Null
+Remove-Item -LiteralPath $stageFile -Force -ErrorAction SilentlyContinue
 
 function Write-Step($Message) {
     Write-Host "[run] $Message"
@@ -26,6 +28,11 @@ function Write-Ready($Message) {
 
 function Write-Warn($Message) {
     Write-Host "[warn] $Message" -ForegroundColor Yellow
+}
+
+function Write-Stage($Message) {
+    $line = "{0} {1}" -f (Get-Date).ToString("o"), $Message
+    Add-Content -LiteralPath $stageFile -Value $line
 }
 
 function Read-DotEnv($Path) {
@@ -175,6 +182,26 @@ function Wait-Http($Name, $Url, [int]$TimeoutSeconds) {
     throw "$Name did not answer at $Url"
 }
 
+function Wait-PostgresSql($PsqlPath, [int]$Port, $User, $Password, [int]$TimeoutSeconds) {
+    $oldPassword = $env:PGPASSWORD
+    $env:PGPASSWORD = $Password
+    try {
+        $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+        do {
+            $output = & $PsqlPath -w -h 127.0.0.1 -p $Port -U $User -d postgres -tAc "SELECT 1" 2>$null
+            if ($LASTEXITCODE -eq 0 -and ([string]($output | Select-Object -First 1)).Trim() -eq "1") {
+                Write-Ready "Postgres accepts SQL connections"
+                return
+            }
+            Start-Sleep -Seconds 1
+        } while ((Get-Date) -lt $deadline)
+    } finally {
+        $env:PGPASSWORD = $oldPassword
+    }
+
+    throw "Postgres did not accept SQL connections within $TimeoutSeconds seconds"
+}
+
 function Stop-LocalProcesses {
     $knownRoots = @($runtimeDir, (Join-Path $repoRoot "apps\web"))
     $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
@@ -231,6 +258,7 @@ function Start-LoggedProcess($Name, $FilePath, [string[]]$Arguments, $WorkingDir
 }
 
 function Start-Postgres {
+    Write-Stage "postgres:start"
     $pgPort = [int](EnvValue "POSTGRES_PORT" "15432")
     $pgDb = EnvValue "POSTGRES_DB" "creators"
     $pgUser = EnvValue "POSTGRES_USER" "postgres"
@@ -238,9 +266,8 @@ function Start-Postgres {
     $pgData = Join-Path $runtimeDir "postgres-data"
     $pgLog = Join-Path $logDir "postgres.log"
     $initdb = Get-PostgresTool "initdb"
-    $pgCtl = Get-PostgresTool "pg_ctl"
+    $postgres = Get-PostgresTool "postgres"
     $psql = Get-PostgresTool "psql"
-    $createdb = Get-PostgresTool "createdb"
 
     if (-not (Test-Path (Join-Path $pgData "PG_VERSION"))) {
         if ((Test-Path $pgData) -and ((Get-ChildItem $pgData -Force | Measure-Object).Count -gt 0)) {
@@ -257,38 +284,47 @@ function Start-Postgres {
         }
     }
 
+    Write-Stage "postgres:start-server"
+    $process = $null
     if (-not (Test-Tcp "127.0.0.1" $pgPort 500)) {
         Write-Step "starting local Postgres"
-        & $pgCtl -D $pgData -l $pgLog -o "-p $pgPort -h 127.0.0.1" start | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "pg_ctl start failed with exit code $LASTEXITCODE"
-        }
+        $process = Start-LoggedProcess "postgres" $postgres @("-D", $pgData, "-p", "$pgPort", "-h", "127.0.0.1") $repoRoot
     }
 
+    Write-Stage "postgres:wait"
     Wait-Tcp "Postgres" "127.0.0.1" $pgPort 30
+    Start-Sleep -Seconds 5
 
+    Write-Stage "postgres:ensure-db"
     $oldPassword = $env:PGPASSWORD
     $env:PGPASSWORD = $pgPassword
     try {
-        $exists = (& $psql -h 127.0.0.1 -p $pgPort -U $pgUser -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$pgDb'").Trim()
+        $existsOutput = & $psql -w -h 127.0.0.1 -p $pgPort -U $pgUser -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$pgDb'"
+        if ($LASTEXITCODE -ne 0) {
+            throw "psql database check failed with exit code $LASTEXITCODE"
+        }
+        $exists = ([string]($existsOutput | Select-Object -First 1)).Trim()
         if ($exists -ne "1") {
             Write-Step "creating Postgres database $pgDb"
-            & $createdb -h 127.0.0.1 -p $pgPort -U $pgUser $pgDb
+            & $psql -w -h 127.0.0.1 -p $pgPort -U $pgUser -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE `"$pgDb`""
             if ($LASTEXITCODE -ne 0) {
-                throw "createdb failed with exit code $LASTEXITCODE"
+                throw "database creation failed with exit code $LASTEXITCODE"
             }
         }
     } finally {
         $env:PGPASSWORD = $oldPassword
     }
 
+    Write-Stage "postgres:done"
     return @{
         Url = "postgres://$pgUser`:$pgPassword@127.0.0.1:$pgPort/$pgDb`?sslmode=disable"
         Port = $pgPort
+        Process = $process
     }
 }
 
 function Start-Redis {
+    Write-Stage "redis:start"
     $redisPort = [int](EnvValue "REDIS_PORT" "16379")
     Assert-PortFree $redisPort "Redis"
 
@@ -307,6 +343,7 @@ function Start-Redis {
 
     $process = Start-LoggedProcess "redis" $redisServer @($redisConf) $runtimeDir
     Wait-Tcp "Redis" "127.0.0.1" $redisPort 20
+    Write-Stage "redis:done"
     return @{
         Url = "redis://127.0.0.1:$redisPort/0"
         Port = $redisPort
@@ -315,6 +352,7 @@ function Start-Redis {
 }
 
 function Start-MinIO {
+    Write-Stage "minio:start"
     $apiPort = [int](EnvValue "MINIO_API_PORT" "9000")
     $consolePort = [int](EnvValue "MINIO_CONSOLE_PORT" "9001")
     $rootUser = EnvValue "MINIO_ROOT_USER" "minioadmin"
@@ -340,6 +378,7 @@ function Start-MinIO {
 
     $healthUrl = "http://127.0.0.1:$apiPort/minio/health/live"
     Wait-Http "MinIO" $healthUrl 45
+    Write-Stage "minio:done"
     return @{
         HealthUrl = $healthUrl
         ConsoleUrl = "http://127.0.0.1:$consolePort"
@@ -350,6 +389,7 @@ function Start-MinIO {
 function Start-Backend {
     param($PostgresUrl, $RedisUrl, $MinioHealthUrl)
 
+    Write-Stage "backend:start"
     $apiPort = [int](EnvValue "API_PORT" "18000")
     Assert-PortFree $apiPort "API"
 
@@ -377,6 +417,7 @@ function Start-Backend {
     $process = Start-LoggedProcess "api" $apiExe @() $repoRoot
     $healthUrl = "http://127.0.0.1:$apiPort/api/health"
     Wait-Http "API" $healthUrl 20
+    Write-Stage "backend:done"
     return @{
         HealthUrl = $healthUrl
         Process = $process
@@ -384,6 +425,7 @@ function Start-Backend {
 }
 
 function Start-Frontend {
+    Write-Stage "frontend:start"
     $webPort = [int](EnvValue "WEB_PORT" "5173")
     Assert-PortFree $webPort "Expo web"
 
@@ -413,6 +455,7 @@ function Start-Frontend {
     $process = Start-LoggedProcess "frontend" $npm @("run", "web") $webRoot
     $webUrl = "http://127.0.0.1:$webPort"
     Wait-Http "Expo web" $webUrl 90
+    Write-Stage "frontend:done"
     return @{
         Url = $webUrl
         Process = $process
@@ -421,9 +464,13 @@ function Start-Frontend {
 
 Stop-LocalProcesses
 
+Write-Stage "services:start"
 $pg = Start-Postgres
+Write-Stage "services:postgres-ready"
 $redis = Start-Redis
+Write-Stage "services:redis-ready"
 $minio = Start-MinIO
+Write-Stage "services:minio-ready"
 
 $api = $null
 if (-not $NoBackend -and -not $ServicesOnly) {
@@ -438,7 +485,7 @@ if (-not $NoFrontend -and -not $ServicesOnly) {
 $state = [ordered]@{
     startedAt = (Get-Date).ToString("o")
     services = [ordered]@{
-        postgres = @{ port = $pg.Port; data = Join-Path $runtimeDir "postgres-data" }
+        postgres = @{ port = $pg.Port; data = Join-Path $runtimeDir "postgres-data"; pid = if ($pg.Process) { $pg.Process.Id } else { $null } }
         redis = @{ port = $redis.Port; pid = $redis.Process.Id }
         minio = @{ healthUrl = $minio.HealthUrl; consoleUrl = $minio.ConsoleUrl; pid = $minio.Process.Id }
     }
