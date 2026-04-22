@@ -5,3 +5,5 @@ coverage/
 *.log
 backend/.docker/bin/
 .runtime-bin/
+.local/
+apps/web/.expo/

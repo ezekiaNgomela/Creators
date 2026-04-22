@@ -1,25 +1,31 @@
 # Creators
 
-Minimal monorepo with one frontend entry, one backend entry, and one Docker Compose command.
+Creators runs locally without Docker.
 
 ## Structure
 
 - `apps/api` - Go API entrypoint
-- `apps/web` - React web entrypoint
-- `docker-compose.yml` - starts the full stack
-- `.env.example` - local environment template
+- `apps/web` - React/Vite web entrypoint
+- `run-project.ps1` - starts Postgres, Redis, MinIO, API, and web
+- `scripts/stop-local.ps1` - stops the local stack
 
 ## Run
 
-1. Copy `.env.example` to `.env`
-2. Run:
+```powershell
+.\run-project.ps1
+```
 
-```bash
-docker compose up --build
+The runner starts each service directly and writes local-only data/logs under `.local/`.
+
+## Stop
+
+```powershell
+.\scripts\stop-local.ps1
 ```
 
 ## URLs
 
 - Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:18000/api`
 - Backend health: `http://localhost:18000/api/health`
 - MinIO console: `http://localhost:9001`

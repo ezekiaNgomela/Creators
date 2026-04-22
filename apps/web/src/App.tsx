@@ -30,7 +30,7 @@ export default function App() {
         <h1>One frontend. One backend. One command to run the project.</h1>
         <p className="lead">
           This reset keeps the repo simple: React on the frontend, Go on the backend,
-          and Docker Compose for the whole stack.
+          and local Postgres, Redis, and MinIO services behind one runner.
         </p>
         <div className="actions">
           <button onClick={() => void load()} disabled={loading}>
@@ -48,7 +48,7 @@ export default function App() {
           <ul>
             <li><code>apps/web/src/main.tsx</code></li>
             <li><code>apps/api/main.go</code></li>
-            <li><code>docker-compose.yml</code></li>
+            <li><code>run-project.ps1</code></li>
           </ul>
         </article>
 
