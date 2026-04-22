@@ -25,6 +25,32 @@ export type AuthResponse = {
   user: AuthUser;
 };
 
+export type LiveRoom = {
+  id: number;
+  title: string;
+  host: string;
+  topic: string;
+  viewers: number;
+  startsAt: string;
+  status: "live" | "scheduled" | string;
+  accent: string;
+  updatedAt: string;
+};
+
+export type FeedPost = {
+  id: number;
+  body: string;
+  mood: string;
+  author: AuthUser;
+  createdAt: string;
+};
+
+export type FeedResponse = {
+  user: AuthUser;
+  liveRooms: LiveRoom[];
+  posts: FeedPost[];
+};
+
 type ApiError = {
   message?: string;
 };
@@ -111,4 +137,16 @@ export async function getGoogleAuthUrl(): Promise<string> {
     },
   });
   return response.authUrl;
+}
+
+export async function fetchFeed(): Promise<FeedResponse> {
+  return apiRequest<FeedResponse>("/feed");
+}
+
+export async function createPost(input: { body: string; mood: string }): Promise<FeedPost> {
+  const response = await apiRequest<{ post: FeedPost }>("/posts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.post;
 }

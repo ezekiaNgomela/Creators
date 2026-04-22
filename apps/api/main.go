@@ -114,6 +114,37 @@ type googleProfile struct {
 	Picture       string `json:"picture"`
 }
 
+type liveRoomResponse struct {
+	ID        int64  `json:"id"`
+	Title     string `json:"title"`
+	Host      string `json:"host"`
+	Topic     string `json:"topic"`
+	Viewers   int    `json:"viewers"`
+	StartsAt  string `json:"startsAt"`
+	Status    string `json:"status"`
+	Accent    string `json:"accent"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+type postResponse struct {
+	ID        int64        `json:"id"`
+	Body      string       `json:"body"`
+	Mood      string       `json:"mood"`
+	Author    userResponse `json:"author"`
+	CreatedAt string       `json:"createdAt"`
+}
+
+type feedResponse struct {
+	User      userResponse       `json:"user"`
+	LiveRooms []liveRoomResponse `json:"liveRooms"`
+	Posts     []postResponse     `json:"posts"`
+}
+
+type createPostRequest struct {
+	Body string `json:"body"`
+	Mood string `json:"mood"`
+}
+
 func main() {
 	port := valueOrDefault("APP_PORT", "8080")
 	postgresURL := os.Getenv("POSTGRES_URL")
@@ -160,6 +191,8 @@ func main() {
 	mux.HandleFunc("/api/auth/logout", server.handleLogout)
 	mux.HandleFunc("/api/auth/google/start", server.handleGoogleStart)
 	mux.HandleFunc("/api/auth/google/callback", server.handleGoogleCallback)
+	mux.HandleFunc("/api/feed", server.handleFeed)
+	mux.HandleFunc("/api/posts", server.handlePosts)
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{
 			"service": "creators-api",
@@ -190,6 +223,38 @@ func (s *appServer) ensureAuthSchema(ctx context.Context) error {
 			google_sub TEXT UNIQUE,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		);
+
+		CREATE TABLE IF NOT EXISTS posts (
+			id BIGSERIAL PRIMARY KEY,
+			author_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			body TEXT NOT NULL,
+			mood TEXT NOT NULL DEFAULT 'Update',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		);
+
+		CREATE TABLE IF NOT EXISTS live_rooms (
+			id BIGSERIAL PRIMARY KEY,
+			title TEXT NOT NULL,
+			host TEXT NOT NULL,
+			topic TEXT NOT NULL,
+			viewers INTEGER NOT NULL DEFAULT 0,
+			starts_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			status TEXT NOT NULL DEFAULT 'live',
+			accent TEXT NOT NULL DEFAULT 'ember',
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		);
+
+		INSERT INTO live_rooms (title, host, topic, viewers, starts_at, status, accent)
+		SELECT 'Launch teardown: first paid drop', 'Mika Studio', 'Commerce', 248, now() - interval '11 minutes', 'live', 'ember'
+		WHERE NOT EXISTS (SELECT 1 FROM live_rooms);
+
+		INSERT INTO live_rooms (title, host, topic, viewers, starts_at, status, accent)
+		SELECT 'Editing room: short-form batch', 'Noor Creates', 'Video', 96, now() - interval '27 minutes', 'live', 'moss'
+		WHERE (SELECT COUNT(*) FROM live_rooms) < 2;
+
+		INSERT INTO live_rooms (title, host, topic, viewers, starts_at, status, accent)
+		SELECT 'Member Q&A before release', 'The Maker Table', 'Community', 64, now() + interval '18 minutes', 'scheduled', 'ink'
+		WHERE (SELECT COUNT(*) FROM live_rooms) < 3;
 	`)
 	return err
 }
@@ -317,6 +382,95 @@ func (s *appServer) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	clearCookie(w, tokenCookieName)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed_out"})
+}
+
+func (s *appServer) handleFeed(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	user, ok := s.requireCurrentUser(w, r)
+	if !ok {
+		return
+	}
+
+	liveRooms, err := s.listLiveRooms(r.Context())
+	if err != nil {
+		log.Printf("live feed failed: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load live feed")
+		return
+	}
+
+	posts, err := s.listPosts(r.Context())
+	if err != nil {
+		log.Printf("post feed failed: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load posts")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, feedResponse{
+		User:      toUserResponse(user),
+		LiveRooms: liveRooms,
+		Posts:     posts,
+	})
+}
+
+func (s *appServer) handlePosts(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		user, ok := s.requireCurrentUser(w, r)
+		if !ok {
+			return
+		}
+		_ = user
+		posts, err := s.listPosts(r.Context())
+		if err != nil {
+			log.Printf("post list failed: %v", err)
+			writeError(w, http.StatusInternalServerError, "could not load posts")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string][]postResponse{"posts": posts})
+	case http.MethodPost:
+		user, ok := s.requireCurrentUser(w, r)
+		if !ok {
+			return
+		}
+
+		var request createPostRequest
+		if err := decodeJSON(r, &request); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid post")
+			return
+		}
+
+		body := strings.TrimSpace(request.Body)
+		mood := strings.TrimSpace(request.Mood)
+		if mood == "" {
+			mood = "Update"
+		}
+		if body == "" {
+			writeError(w, http.StatusBadRequest, "post body is required")
+			return
+		}
+		if len([]rune(body)) > 500 {
+			writeError(w, http.StatusBadRequest, "posts are limited to 500 characters")
+			return
+		}
+		if len([]rune(mood)) > 32 {
+			writeError(w, http.StatusBadRequest, "mood is too long")
+			return
+		}
+
+		post, err := s.createPost(r.Context(), user.ID, body, mood)
+		if err != nil {
+			log.Printf("post create failed: %v", err)
+			writeError(w, http.StatusInternalServerError, "could not publish post")
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]postResponse{"post": post})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 func (s *appServer) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
@@ -469,6 +623,104 @@ func (s *appServer) upsertGoogleUser(ctx context.Context, profile googleProfile)
 	return scanUser(row)
 }
 
+func (s *appServer) listLiveRooms(ctx context.Context) ([]liveRoomResponse, error) {
+	rows, err := s.postgresPool.Query(ctx, `
+		SELECT id, title, host, topic, viewers, starts_at, status, accent, updated_at
+		FROM live_rooms
+		ORDER BY
+			CASE WHEN status = 'live' THEN 0 ELSE 1 END,
+			starts_at ASC,
+			id ASC
+		LIMIT 8
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	liveRooms := []liveRoomResponse{}
+	for rows.Next() {
+		var room liveRoomResponse
+		var startsAt time.Time
+		var updatedAt time.Time
+		if err := rows.Scan(&room.ID, &room.Title, &room.Host, &room.Topic, &room.Viewers, &startsAt, &room.Status, &room.Accent, &updatedAt); err != nil {
+			return nil, err
+		}
+		room.StartsAt = startsAt.UTC().Format(time.RFC3339)
+		room.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
+		liveRooms = append(liveRooms, room)
+	}
+	return liveRooms, rows.Err()
+}
+
+func (s *appServer) listPosts(ctx context.Context) ([]postResponse, error) {
+	rows, err := s.postgresPool.Query(ctx, `
+		SELECT
+			posts.id,
+			posts.body,
+			posts.mood,
+			posts.created_at,
+			users.id,
+			users.email,
+			users.name,
+			users.provider,
+			users.created_at
+		FROM posts
+		JOIN users ON users.id = posts.author_id
+		ORDER BY posts.created_at DESC, posts.id DESC
+		LIMIT 60
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	posts := []postResponse{}
+	for rows.Next() {
+		var post postResponse
+		var createdAt time.Time
+		var authorCreatedAt time.Time
+		if err := rows.Scan(
+			&post.ID,
+			&post.Body,
+			&post.Mood,
+			&createdAt,
+			&post.Author.ID,
+			&post.Author.Email,
+			&post.Author.Name,
+			&post.Author.Provider,
+			&authorCreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		post.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		post.Author.CreatedAt = authorCreatedAt.UTC().Format(time.RFC3339)
+		posts = append(posts, post)
+	}
+	return posts, rows.Err()
+}
+
+func (s *appServer) createPost(ctx context.Context, authorID int64, body string, mood string) (postResponse, error) {
+	row := s.postgresPool.QueryRow(ctx, `
+		INSERT INTO posts (author_id, body, mood)
+		VALUES ($1, $2, $3)
+		RETURNING id, body, mood, created_at
+	`, authorID, body, mood)
+
+	var post postResponse
+	var createdAt time.Time
+	if err := row.Scan(&post.ID, &post.Body, &post.Mood, &createdAt); err != nil {
+		return postResponse{}, err
+	}
+	user, err := s.findUserByID(ctx, authorID)
+	if err != nil {
+		return postResponse{}, err
+	}
+	post.Author = toUserResponse(user)
+	post.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+	return post, nil
+}
+
 func scanUser(row pgx.Row) (dbUser, error) {
 	var user dbUser
 	err := row.Scan(&user.ID, &user.Email, &user.Name, &user.PasswordHash, &user.Provider, &user.CreatedAt)
@@ -501,6 +753,26 @@ func (s *appServer) claimsFromRequest(r *http.Request) (tokenClaims, error) {
 		return tokenClaims{}, errors.New("missing token")
 	}
 	return verifyJWT(token, s.jwtSecret, s.jwtIssuer)
+}
+
+func (s *appServer) requireCurrentUser(w http.ResponseWriter, r *http.Request) (dbUser, bool) {
+	claims, err := s.claimsFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "sign in required")
+		return dbUser{}, false
+	}
+
+	user, err := s.findUserByID(r.Context(), claims.Subject)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusUnauthorized, "account no longer exists")
+			return dbUser{}, false
+		}
+		log.Printf("auth user lookup failed: %v", err)
+		writeError(w, http.StatusInternalServerError, "could not load account")
+		return dbUser{}, false
+	}
+	return user, true
 }
 
 func signJWT(claims tokenClaims, secret string) (string, error) {
