@@ -89,9 +89,26 @@ function Get-PostgresTool($Name) {
 }
 
 function Download-File($Url, $OutputPath, [long]$MinBytes = 1) {
+    $expectedBytes = $null
+    try {
+        $head = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing
+        $lengthHeader = $head.Headers["Content-Length"]
+        if ($lengthHeader -is [array]) {
+            $lengthHeader = $lengthHeader[0]
+        }
+        $parsedLength = 0L
+        if ([long]::TryParse([string]$lengthHeader, [ref]$parsedLength)) {
+            $expectedBytes = $parsedLength
+        }
+    } catch {
+        Write-Warn "could not read remote file size for $Url"
+    }
+
     if (Test-Path $OutputPath) {
         $existing = Get-Item -LiteralPath $OutputPath
-        if ($existing.Length -ge $MinBytes) {
+        $largeEnough = $existing.Length -ge $MinBytes
+        $matchesExpectedSize = ($null -eq $expectedBytes) -or ($existing.Length -eq $expectedBytes)
+        if ($largeEnough -and $matchesExpectedSize) {
             return
         }
         Write-Warn "removing incomplete download $OutputPath"
@@ -110,6 +127,10 @@ function Download-File($Url, $OutputPath, [long]$MinBytes = 1) {
     if ($downloaded.Length -lt $MinBytes) {
         Remove-Item -LiteralPath $partialPath -Force -ErrorAction SilentlyContinue
         throw "Downloaded file from $Url was smaller than expected."
+    }
+    if ($null -ne $expectedBytes -and $downloaded.Length -ne $expectedBytes) {
+        Remove-Item -LiteralPath $partialPath -Force -ErrorAction SilentlyContinue
+        throw "Downloaded file from $Url was incomplete. Expected $expectedBytes bytes, got $($downloaded.Length)."
     }
 
     Move-Item -LiteralPath $partialPath -Destination $OutputPath -Force
@@ -155,7 +176,7 @@ function Install-Redis {
 function Install-MinIO {
     $minioRoot = Join-Path $toolsDir "minio"
     $minioExe = Join-Path $minioRoot "minio.exe"
-    if (Assert-ToolFile $minioExe "MinIO" 10000000) {
+    if ($NoInstall -and (Assert-ToolFile $minioExe "MinIO" 10000000)) {
         return $minioExe
     }
 
@@ -215,11 +236,23 @@ function Wait-Http($Name, $Url, [int]$TimeoutSeconds) {
 function Wait-PostgresSql($PsqlPath, [int]$Port, $User, $Password, [int]$TimeoutSeconds) {
     $oldPassword = $env:PGPASSWORD
     $env:PGPASSWORD = $Password
+    $postgresUrl = "postgres://$User@127.0.0.1:$Port/postgres?sslmode=disable&connect_timeout=5"
     try {
         $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
         do {
-            $output = & $PsqlPath -w -h 127.0.0.1 -p $Port -U $User -d postgres -tAc "SELECT 1" 2>$null
-            if ($LASTEXITCODE -eq 0 -and ([string]($output | Select-Object -First 1)).Trim() -eq "1") {
+            $output = $null
+            $exitCode = 1
+            $oldPreference = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                $output = & $PsqlPath -w $postgresUrl -tAc "SELECT 1" 2>$null
+                $exitCode = $LASTEXITCODE
+            } catch {
+                $exitCode = 1
+            } finally {
+                $ErrorActionPreference = $oldPreference
+            }
+            if ($exitCode -eq 0 -and ([string]($output | Select-Object -First 1)).Trim() -eq "1") {
                 Write-Ready "Postgres accepts SQL connections"
                 return
             }
@@ -233,11 +266,14 @@ function Wait-PostgresSql($PsqlPath, [int]$Port, $User, $Password, [int]$Timeout
 }
 
 function Stop-LocalProcesses {
-    $knownRoots = @($runtimeDir, (Join-Path $repoRoot "apps\web"))
+    $knownRoots = @($runtimeDir, (Join-Path $repoRoot "apps\web"), (Join-Path $repoRoot "node_modules"))
     $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object {
             $line = $_.CommandLine
             if ([string]::IsNullOrWhiteSpace($line)) {
+                return $false
+            }
+            if ($_.Name -ieq "postgres.exe") {
                 return $false
             }
             foreach ($root in $knownRoots) {
@@ -275,13 +311,19 @@ function Start-LoggedProcess($Name, $FilePath, [string[]]$Arguments, $WorkingDir
     $stderr = Join-Path $logDir "$Name.err.log"
     Remove-Item -LiteralPath $stdout, $stderr -Force -ErrorAction SilentlyContinue
 
-    $process = Start-Process -FilePath $FilePath `
-        -ArgumentList $Arguments `
-        -WorkingDirectory $WorkingDirectory `
-        -RedirectStandardOutput $stdout `
-        -RedirectStandardError $stderr `
-        -WindowStyle Hidden `
-        -PassThru
+    $processArgs = @{
+        FilePath = $FilePath
+        WorkingDirectory = $WorkingDirectory
+        RedirectStandardOutput = $stdout
+        RedirectStandardError = $stderr
+        WindowStyle = "Hidden"
+        PassThru = $true
+    }
+    if ($Arguments.Count -gt 0) {
+        $processArgs.ArgumentList = $Arguments
+    }
+
+    $process = Start-Process @processArgs
 
     Write-Step "started $Name pid=$($process.Id)"
     return $process
@@ -323,20 +365,21 @@ function Start-Postgres {
 
     Write-Stage "postgres:wait"
     Wait-Tcp "Postgres" "127.0.0.1" $pgPort 30
-    Start-Sleep -Seconds 5
+    Wait-PostgresSql $psql $pgPort $pgUser $pgPassword 600
 
     Write-Stage "postgres:ensure-db"
     $oldPassword = $env:PGPASSWORD
     $env:PGPASSWORD = $pgPassword
+    $postgresUrl = "postgres://$pgUser@127.0.0.1:$pgPort/postgres?sslmode=disable&connect_timeout=5"
     try {
-        $existsOutput = & $psql -w -h 127.0.0.1 -p $pgPort -U $pgUser -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$pgDb'"
+        $existsOutput = & $psql -w $postgresUrl -tAc "SELECT 1 FROM pg_database WHERE datname='$pgDb'"
         if ($LASTEXITCODE -ne 0) {
             throw "psql database check failed with exit code $LASTEXITCODE"
         }
         $exists = ([string]($existsOutput | Select-Object -First 1)).Trim()
         if ($exists -ne "1") {
             Write-Step "creating Postgres database $pgDb"
-            & $psql -w -h 127.0.0.1 -p $pgPort -U $pgUser -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE `"$pgDb`""
+            & $psql -w $postgresUrl -v ON_ERROR_STOP=1 -c "CREATE DATABASE `"$pgDb`""
             if ($LASTEXITCODE -ne 0) {
                 throw "database creation failed with exit code $LASTEXITCODE"
             }
@@ -426,6 +469,7 @@ function Start-Backend {
     $apiRoot = Join-Path $repoRoot "apps\api"
     $apiExe = Join-Path $runtimeDir "creators-api.exe"
 
+    Write-Stage "backend:build"
     Write-Step "building Go API"
     Push-Location $apiRoot
     try {
@@ -444,8 +488,10 @@ function Start-Backend {
     Set-ProcessEnv "MINIO_HEALTH_URL" $MinioHealthUrl
     Set-ProcessEnv "FRONTEND_ORIGIN" "http://localhost:$(EnvValue "WEB_PORT" "5173")"
 
+    Write-Stage "backend:run"
     $process = Start-LoggedProcess "api" $apiExe @() $repoRoot
     $healthUrl = "http://127.0.0.1:$apiPort/api/health"
+    Write-Stage "backend:wait"
     Wait-Http "API" $healthUrl 20
     Write-Stage "backend:done"
     return @{
@@ -465,11 +511,17 @@ function Start-Frontend {
         $npm = (Get-Command npm -ErrorAction Stop).Source
     }
 
-    if (-not $NoInstall -and -not (Test-Path (Join-Path $webRoot "node_modules\expo\package.json"))) {
-        Write-Step "installing frontend packages"
-        Push-Location $webRoot
+    $expoInstalled = (Test-Path (Join-Path $webRoot "node_modules\expo\package.json")) -or
+        (Test-Path (Join-Path $repoRoot "node_modules\expo\package.json"))
+    if (-not $NoInstall -and -not $expoInstalled) {
+        Write-Step "installing workspace packages"
+        Push-Location $repoRoot
         try {
-            & $npm install
+            $npx = (Get-Command npx.cmd -ErrorAction SilentlyContinue).Source
+            if (-not $npx) {
+                $npx = (Get-Command npx -ErrorAction Stop).Source
+            }
+            & $npx -y npm@10 install
             if ($LASTEXITCODE -ne 0) {
                 throw "npm install failed with exit code $LASTEXITCODE"
             }
@@ -481,10 +533,11 @@ function Start-Frontend {
     Set-ProcessEnv "EXPO_PUBLIC_API_BASE_URL" "http://localhost:$(EnvValue "API_PORT" "18000")/api"
     Set-ProcessEnv "EXPO_NO_TELEMETRY" "1"
     Set-ProcessEnv "BROWSER" "none"
+    Set-ProcessEnv "NODE_PATH" "$webRoot\node_modules;$repoRoot\node_modules"
 
     $process = Start-LoggedProcess "frontend" $npm @("run", "web") $webRoot
     $webUrl = "http://127.0.0.1:$webPort"
-    Wait-Http "Expo web" $webUrl 90
+    Wait-Tcp "Expo web" "127.0.0.1" $webPort 180
     Write-Stage "frontend:done"
     return @{
         Url = $webUrl

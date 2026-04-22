@@ -29,10 +29,13 @@ if (Test-Path $stateFile) {
     Stop-Pid $state.services.postgres.pid "postgres"
 }
 
-$knownRoots = @($runtimeDir, (Join-Path $repoRoot "apps\web"))
+$knownRoots = @($runtimeDir, (Join-Path $repoRoot "apps\web"), (Join-Path $repoRoot "node_modules"))
 $orphanProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object {
         if ($_.ProcessId -eq $PID -or [string]::IsNullOrWhiteSpace($_.CommandLine)) {
+            return $false
+        }
+        if ($_.Name -ieq "postgres.exe") {
             return $false
         }
         foreach ($root in $knownRoots) {
@@ -60,7 +63,11 @@ if (-not $pgCtl) {
 $pgData = Join-Path $runtimeDir "postgres-data"
 if ($pgCtl -and (Test-Path (Join-Path $pgData "postmaster.pid"))) {
     Write-Step "stopping Postgres"
-    & $pgCtl -D $pgData stop -m fast 2>$null | Out-Null
+    try {
+        & $pgCtl -D $pgData stop -m fast 2>$null | Out-Null
+    } catch {
+        Write-Step "Postgres was already stopped"
+    }
 }
 
 $listener = Get-NetTCPConnection -State Listen -LocalPort 15432 -ErrorAction SilentlyContinue | Select-Object -First 1

@@ -71,7 +71,7 @@ func checkDependencies(parent context.Context, postgresPool *pgxpool.Pool, redis
 	checks := map[string]string{}
 	status := "ok"
 
-	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
 	if err := postgresPool.Ping(ctx); err != nil {

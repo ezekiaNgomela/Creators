@@ -1,6 +1,7 @@
 {
   "name": "creators",
   "version": "0.1.0",
+  "packageManager": "npm@10.9.8",
   "private": true,
   "workspaces": [
     "apps/*"
@@ -12,5 +13,11 @@
     "backend": "powershell -NoProfile -ExecutionPolicy Bypass -File ./run-backend.ps1",
     "frontend": "npm --prefix apps/web run web",
     "typecheck": "npm --prefix apps/web run typecheck"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.17",
+    "debug": "^4.4.3",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
   }
 }
