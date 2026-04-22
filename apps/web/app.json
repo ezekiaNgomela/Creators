@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Creators",
+    "slug": "creators",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "creators",
+    "userInterfaceStyle": "automatic",
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    }
+  }
+}

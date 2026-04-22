@@ -1,4 +1,8 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:18000/api").replace(/\/$/, "");
+declare const process: {
+  env?: Record<string, string | undefined>;
+};
+
+const API_BASE_URL = (process.env?.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:18000/api").replace(/\/$/, "");
 
 export type HealthResponse = {
   service: string;

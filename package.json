@@ -1,0 +1,15 @@
+{
+  "name": "creators",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "start": "powershell -NoProfile -ExecutionPolicy Bypass -File ./run-project.ps1",
+    "dev": "npm run start",
+    "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/stop-local.ps1",
+    "backend": "powershell -NoProfile -ExecutionPolicy Bypass -File ./run-backend.ps1",
+    "frontend": "npm --prefix apps/web run web",
+    "typecheck": "npm --prefix apps/web run typecheck"
+  }
+}

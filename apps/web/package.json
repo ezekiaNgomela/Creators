@@ -1,22 +1,25 @@
 {
-  "name": "creators-web",
+  "name": "creators-frontend",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
+  "main": "index.ts",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview --host 0.0.0.0 --port 4173"
+    "start": "expo start",
+    "web": "expo start --web --port 5173",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "@expo/metro-runtime": "^6.1.2",
+    "expo": "^54.0.23",
+    "expo-status-bar": "^3.0.8",
+    "react": "^19.1.0",
+    "react-native": "^0.81.5",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "typescript": "^5.6.3",
-    "vite": "^5.4.10"
+    "@types/react": "^19.1.0",
+    "typescript": "^5.9.2"
   }
 }

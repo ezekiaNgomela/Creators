@@ -1,8 +1,0 @@
-FROM alpine:3.20
-
-ARG BINARY_NAME
-RUN apk add --no-cache ca-certificates
-WORKDIR /app
-COPY .docker/bin/${BINARY_NAME} /app/service
-EXPOSE 8080
-CMD ["/app/service"]
