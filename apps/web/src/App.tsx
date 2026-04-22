@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   clearStoredToken,
-  createPost,
   fetchCurrentUser,
   fetchFeed,
   fetchHealth,
@@ -17,7 +16,7 @@ import {
 } from "./api";
 
 type AuthMode = "login" | "register";
-type HomeView = "feed" | "live" | "posts" | "studio";
+type HomeView = "home" | "live" | "studio" | "channels" | "profile";
 
 const featureRows = [
   {
@@ -34,13 +33,12 @@ const featureRows = [
   },
 ];
 
-const moodOptions = ["Update", "Launch", "Question", "Behind the scenes"];
-
 const homeViews: Array<{ id: HomeView; label: string }> = [
-  { id: "feed", label: "Feed" },
+  { id: "home", label: "Home" },
   { id: "live", label: "Live" },
-  { id: "posts", label: "Posts" },
   { id: "studio", label: "Studio" },
+  { id: "channels", label: "Channels" },
+  { id: "profile", label: "Profile" },
 ];
 
 export default function App() {
@@ -233,14 +231,18 @@ function Home({
 }) {
   const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
   const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [body, setBody] = useState("");
-  const [mood, setMood] = useState(moodOptions[0]);
   const [loading, setLoading] = useState(true);
-  const [publishing, setPublishing] = useState(false);
   const [feedError, setFeedError] = useState("");
-  const [activeView, setActiveView] = useState<HomeView>("feed");
+  const [activeView, setActiveView] = useState<HomeView>("home");
+  const [selectedLiveId, setSelectedLiveId] = useState<number | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const activeLabel = homeViews.find((item) => item.id === activeView)?.label ?? "Feed";
+  const activeLabel = homeViews.find((item) => item.id === activeView)?.label ?? "Home";
+  const selectedLive = liveRooms.find((room) => room.id === selectedLiveId) ?? liveRooms[0] ?? null;
+  const promotedPosts = useMemo(() => posts.map((post, index) => ({
+    ...post,
+    promotionScore: promotionScoreFor(post, index),
+  })).sort((left, right) => right.promotionScore - left.promotionScore), [posts]);
 
   async function loadFeed() {
     setLoading(true);
@@ -260,57 +262,40 @@ function Home({
     void loadFeed();
   }, []);
 
-  async function handlePublish(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPublishing(true);
-    setFeedError("");
-    try {
-      const post = await createPost({ body, mood });
-      setPosts((current) => [post, ...current]);
-      setBody("");
-      setMood(moodOptions[0]);
-      onNotice("Post published.");
-    } catch (err) {
-      setFeedError(err instanceof Error ? err.message : "Could not publish post");
-    } finally {
-      setPublishing(false);
-    }
+  function openLive(room: LiveRoom) {
+    setSelectedLiveId(room.id);
+    setActiveView("live");
   }
 
   return (
     <main className="home-shell">
-      <aside className="home-sidebar" aria-label="Workspace navigation">
-        <a className="home-brand" href="/">
+      <header className="mobile-topbar">
+        <button className="mini-menu" type="button" aria-label="Open menu" onClick={() => setMenuOpen((open) => !open)}>
+          <span />
+          <span />
+        </button>
+        <a className="home-brand" href="/" aria-label="Creators home">
           <span className="brand-mark" aria-hidden="true">C</span>
           <span>Creators</span>
         </a>
-        <nav className="home-nav">
-          {homeViews.map((item) => (
-            <button
-              aria-current={activeView === item.id ? "page" : undefined}
-              className={activeView === item.id ? "is-active" : ""}
-              key={item.id}
-              type="button"
-              onClick={() => setActiveView(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-status">
-          <span className={health?.status === "ok" ? "status-dot is-up" : "status-dot"} />
-          <div>
-            <strong>{serviceLabel}</strong>
-            <span>{health ? `${health.checks.postgres}/${health.checks.redis}/${health.checks.minio}` : "checking"}</span>
-          </div>
-        </div>
-      </aside>
+        <button className="profile-chip" type="button" onClick={() => setActiveView("profile")}>
+          <img alt="" src={profileImageFor(user.name)} />
+          <span>{user.name}</span>
+        </button>
+      </header>
 
-      <section className="home-main" id="feed">
-        <header className="home-header">
+      {menuOpen ? (
+        <div className="quick-menu">
+          <button type="button" onClick={() => void loadFeed()} disabled={loading}>Refresh feed</button>
+          <button type="button" onClick={onLogout}>Sign out</button>
+        </div>
+      ) : null}
+
+      <section className="home-main">
+        <header className="home-header glass-panel">
           <div>
-            <p className="section-kicker">Home - {activeLabel}</p>
-            <h1>{activeView === "feed" ? "For you" : activeLabel}</h1>
+            <p className="section-kicker">{activeLabel}</p>
+            <h1>{activeView === "home" ? "Promoted for you" : activeLabel}</h1>
             <p>{homeViewCopy(activeView, user.name)}</p>
           </div>
           <div className="home-actions">
@@ -326,54 +311,45 @@ function Home({
         {feedError ? <p className="feed-error">{feedError}</p> : null}
 
         <div className="home-outlet" aria-live="polite">
-          {activeView === "feed" ? (
+          {activeView === "home" ? (
             <>
-              <LiveStoryStrip liveRooms={liveRooms} onOpenLive={() => setActiveView("live")} />
-              <Composer
-                body={body}
-                mood={mood}
-                publishing={publishing}
-                user={user}
-                onBodyChange={setBody}
-                onMoodChange={setMood}
-                onPublish={handlePublish}
-              />
-              <PostFeed loading={loading} posts={posts} title="For you" />
+              <LiveHighlightArea liveRooms={liveRooms} onOpenLive={openLive} />
+              <PromotedPostOutlet loading={loading} posts={promotedPosts} />
             </>
           ) : null}
 
           {activeView === "live" ? (
-            <LiveOutlet liveRooms={liveRooms} />
-          ) : null}
-
-          {activeView === "posts" ? (
-            <>
-              <Composer
-                body={body}
-                mood={mood}
-                publishing={publishing}
-                user={user}
-                onBodyChange={setBody}
-                onMoodChange={setMood}
-                onPublish={handlePublish}
-              />
-              <PostFeed loading={loading} posts={posts} title="Latest posts" />
-            </>
+            <LiveOutlet liveRooms={liveRooms} selectedLive={selectedLive} onOpenLive={openLive} />
           ) : null}
 
           {activeView === "studio" ? (
             <StudioOutlet health={health} posts={posts} user={user} />
           ) : null}
+
+          {activeView === "channels" ? (
+            <ChannelsOutlet liveRooms={liveRooms} posts={posts} />
+          ) : null}
+
+          {activeView === "profile" ? (
+            <ProfileOutlet health={health} onLogout={onLogout} posts={posts} user={user} />
+          ) : null}
         </div>
       </section>
 
-      <aside className="live-rail" id="live" aria-label="Live feed">
-        <div className="live-rail-header">
-          <p className="section-kicker">Now</p>
-          <h2>Live rooms</h2>
-        </div>
-        <LiveRoomList compact liveRooms={liveRooms} />
-      </aside>
+      <nav className="bottom-nav" aria-label="Primary">
+        {homeViews.map((item) => (
+          <button
+            aria-current={activeView === item.id ? "page" : undefined}
+            className={activeView === item.id ? "is-active" : ""}
+            key={item.id}
+            type="button"
+            onClick={() => setActiveView(item.id)}
+          >
+            <span aria-hidden="true">{navIcon(item.id)}</span>
+            <small>{item.label}</small>
+          </button>
+        ))}
+      </nav>
 
       {notice ? (
         <div className="toast" role="status">
@@ -387,103 +363,64 @@ function Home({
   );
 }
 
-function LiveStoryStrip({ liveRooms, onOpenLive }: { liveRooms: LiveRoom[]; onOpenLive: () => void }) {
-  return (
-    <section className="live-story-strip" aria-label="Live stories">
-      {liveRooms.map((room) => (
-        <button className="live-story" key={room.id} type="button" onClick={onOpenLive}>
-          <span className="story-ring">
-            <img alt={`${room.host} profile`} src={profileImageFor(room.host)} />
-          </span>
-          <span className="story-name">{room.host}</span>
-          <span className="story-time">{room.status === "live" ? timeAgo(room.startsAt) : `in ${timeUntil(room.startsAt)}`}</span>
-        </button>
-      ))}
-    </section>
-  );
-}
+type PromotedPost = FeedPost & { promotionScore: number };
 
-function Composer({
-  body,
-  mood,
-  publishing,
-  user,
-  onBodyChange,
-  onMoodChange,
-  onPublish,
-}: {
-  body: string;
-  mood: string;
-  publishing: boolean;
-  user: AuthUser;
-  onBodyChange: (value: string) => void;
-  onMoodChange: (value: string) => void;
-  onPublish: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
-}) {
-  return (
-    <section className="composer-panel" id="posts" aria-label="Create post">
-      <img className="avatar-img" alt="" src={profileImageFor(user.name)} />
-      <form className="composer-form" onSubmit={(event) => onPublish(event)}>
-        <textarea
-          value={body}
-          maxLength={500}
-          rows={4}
-          placeholder="What are you making right now?"
-          onChange={(event) => onBodyChange(event.target.value)}
-          required
-        />
-        <div className="composer-tools">
-          <label>
-            <span>Mood</span>
-            <select value={mood} onChange={(event) => onMoodChange(event.target.value)}>
-              {moodOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-          <span className="character-count">{body.length}/500</span>
-          <button className="solid-button" type="submit" disabled={publishing || body.trim().length === 0}>
-            {publishing ? "Posting..." : "Post"}
-          </button>
-        </div>
-      </form>
-    </section>
-  );
-}
+function LiveHighlightArea({ liveRooms, onOpenLive }: { liveRooms: LiveRoom[]; onOpenLive: (room: LiveRoom) => void }) {
+  const featured = liveRooms[0];
 
-function PostFeed({ loading, posts, title }: { loading: boolean; posts: FeedPost[]; title: string }) {
   return (
-    <section className="post-feed" aria-label="Post feed">
-      <div className="feed-heading">
-        <h2>{title}</h2>
-        <span>{posts.length} updates</span>
+    <section className="live-highlight glass-panel" aria-label="Live feed highlights">
+      <div className="highlight-copy">
+        <p className="section-kicker">Live now</p>
+        <h2>{featured ? featured.title : "No live rooms yet"}</h2>
+        <p>{featured ? `${featured.host} - ${featured.status === "live" ? `made live ${timeAgo(featured.startsAt)}` : `starts in ${timeUntil(featured.startsAt)}`}` : "Live highlights will appear here."}</p>
       </div>
-      {loading ? <p className="feed-muted">Loading the latest creator posts...</p> : null}
+      <div className="live-cover-row">
+        {liveRooms.map((room) => (
+          <button className="live-cover-button" key={room.id} type="button" onClick={() => onOpenLive(room)}>
+            <span className="live-avatar-ring">
+              <img alt={`${room.host} profile`} src={profileImageFor(room.host)} />
+            </span>
+            <span>{room.host}</span>
+            <small>{room.status === "live" ? timeAgo(room.startsAt) : `in ${timeUntil(room.startsAt)}`}</small>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PromotedPostOutlet({ loading, posts }: { loading: boolean; posts: PromotedPost[] }) {
+  return (
+    <section className="promoted-outlet" aria-label="Promoted posts">
+      <div className="feed-heading">
+        <h2>Promoted posts</h2>
+        <span>{posts.length} ranked</span>
+      </div>
+      {loading ? <p className="feed-muted">Loading promoted posts...</p> : null}
       {!loading && posts.length === 0 ? (
-        <div className="empty-feed">
-          <h3>No posts yet</h3>
-          <p>Publish the first update and it will appear here for the signed-in home feed.</p>
+        <div className="empty-feed glass-panel">
+          <h3>No promoted posts yet</h3>
+          <p>Posts that receive promotion from other users will rise into this feed.</p>
         </div>
       ) : null}
       {posts.map((post) => (
-        <article className="feed-post social-post" key={post.id}>
-          <header className="social-post-header">
-            <img className="avatar-img" alt="" src={profileImageFor(post.author.name)} />
-            <div>
-              <strong>{post.author.name}</strong>
-              <span>{post.mood} - {timeAgo(post.createdAt)}</span>
-            </div>
-          </header>
-          <div className="post-media" style={{ backgroundImage: `url("${postImageFor(post.id)}")` }}>
-            <div className="post-media-overlay">
-              <span>{post.mood}</span>
-              <p>{post.body}</p>
-            </div>
+        <article className="promotion-post glass-panel" key={post.id}>
+          <div className="promotion-visual" style={{ backgroundImage: `url("${postImageFor(post.id)}")` }}>
+            <span>{post.promotionScore}% promoted</span>
           </div>
-          <div className="post-actions" aria-label="Post actions">
-            <button type="button" title="Like">Like</button>
-            <button type="button" title="Comment">Reply</button>
-            <button type="button" title="Share">Share</button>
+          <div className="promotion-body">
+            <header>
+              <img className="avatar-img" alt="" src={profileImageFor(post.author.name)} />
+              <div>
+                <strong>{post.author.name}</strong>
+                <small>{post.mood} - {timeAgo(post.createdAt)}</small>
+              </div>
+            </header>
+            <p>{post.body}</p>
+            <div className="promotion-meter" aria-label={`Promoted ${post.promotionScore} percent`}>
+              <span style={{ width: `${post.promotionScore}%` }} />
+            </div>
           </div>
         </article>
       ))}
@@ -491,59 +428,97 @@ function PostFeed({ loading, posts, title }: { loading: boolean; posts: FeedPost
   );
 }
 
-function LiveOutlet({ liveRooms }: { liveRooms: LiveRoom[] }) {
+function LiveOutlet({
+  liveRooms,
+  selectedLive,
+  onOpenLive,
+}: {
+  liveRooms: LiveRoom[];
+  selectedLive: LiveRoom | null;
+  onOpenLive: (room: LiveRoom) => void;
+}) {
   return (
     <section className="live-outlet">
-      <LiveStoryStrip liveRooms={liveRooms} onOpenLive={() => undefined} />
-      <LiveRoomList liveRooms={liveRooms} />
-    </section>
-  );
-}
-
-function LiveRoomList({ compact = false, liveRooms }: { compact?: boolean; liveRooms: LiveRoom[] }) {
-  return (
-    <div className={compact ? "live-room-list is-compact" : "live-room-list"}>
-      {liveRooms.map((room) => (
-        <article className={`live-room accent-${room.accent}`} key={room.id}>
-          <img className="live-cover" alt={`${room.host} profile`} src={profileImageFor(room.host)} />
-          <div className="live-room-body">
-            <div className="live-room-top">
-              <span>{room.status}</span>
-              <strong>{room.viewers} watching</strong>
-            </div>
-            <h3>{room.title}</h3>
-            <p>{room.host}</p>
-            <small>{room.status === "live" ? `Made live ${timeAgo(room.startsAt)}` : `Starts in ${timeUntil(room.startsAt)}`}</small>
+      {selectedLive ? (
+        <article className="live-player glass-panel">
+          <img alt={`${selectedLive.host} profile`} src={profileImageFor(selectedLive.host)} />
+          <div>
+            <span>{selectedLive.status}</span>
+            <h2>{selectedLive.title}</h2>
+            <p>{selectedLive.host} - made live {timeAgo(selectedLive.startsAt)}</p>
           </div>
         </article>
-      ))}
-    </div>
+      ) : null}
+      <LiveHighlightArea liveRooms={liveRooms} onOpenLive={onOpenLive} />
+    </section>
   );
 }
 
 function StudioOutlet({ health, posts, user }: { health: HealthResponse | null; posts: FeedPost[]; user: AuthUser }) {
   return (
     <section className="studio-outlet">
-      <div className="studio-profile">
+      <div className="studio-profile glass-panel">
         <img className="studio-cover" alt="" src={postImageFor(user.id)} />
         <img className="studio-avatar" alt="" src={profileImageFor(user.name)} />
         <h2>{user.name}</h2>
         <p>{user.email}</p>
       </div>
       <div className="studio-metrics">
-        <div>
+        <div className="glass-panel">
           <strong>{posts.length}</strong>
           <span>posts</span>
         </div>
-        <div>
+        <div className="glass-panel">
           <strong>{health?.status === "ok" ? "Live" : "Syncing"}</strong>
           <span>backend</span>
         </div>
-        <div>
+        <div className="glass-panel">
           <strong>{user.provider}</strong>
           <span>auth</span>
         </div>
       </div>
+    </section>
+  );
+}
+
+function ChannelsOutlet({ liveRooms, posts }: { liveRooms: LiveRoom[]; posts: FeedPost[] }) {
+  const channels = [
+    { name: "Launch Room", meta: `${posts.length} promoted posts`, image: postImageFor(1) },
+    { name: "Live Makers", meta: `${liveRooms.length} live sessions`, image: postImageFor(2) },
+    { name: "Studio Notes", meta: "Daily creator updates", image: postImageFor(3) },
+  ];
+
+  return (
+    <section className="channels-outlet">
+      {channels.map((channel) => (
+        <article className="channel-row glass-panel" key={channel.name}>
+          <img alt="" src={channel.image} />
+          <div>
+            <h3>{channel.name}</h3>
+            <p>{channel.meta}</p>
+          </div>
+          <button type="button">Open</button>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function ProfileOutlet({
+  health,
+  onLogout,
+  posts,
+  user,
+}: {
+  health: HealthResponse | null;
+  onLogout: () => void;
+  posts: FeedPost[];
+  user: AuthUser;
+}) {
+  return (
+    <section className="profile-outlet">
+      <StudioOutlet health={health} posts={posts} user={user} />
+      <button className="solid-button profile-logout" type="button" onClick={onLogout}>Sign out</button>
     </section>
   );
 }
@@ -705,13 +680,34 @@ function timeUntil(value: string) {
 function homeViewCopy(view: HomeView, name: string) {
   switch (view) {
     case "live":
-      return "Creators currently live, with profile covers, host names, and when each room started.";
-    case "posts":
-      return "Write updates and watch the post feed refresh from the backend.";
+      return "Tap a live cover to enter that creator's room.";
     case "studio":
-      return `Your signed-in profile and service state, ${name}.`;
+      return `Your studio pulse and service state, ${name}.`;
+    case "channels":
+      return "Follow creator channels and jump into active communities.";
+    case "profile":
+      return "Your public profile, account state, and sign out control.";
     default:
-      return `Welcome back, ${name}. Swipe the live covers, post an update, and keep moving.`;
+      return `Welcome back, ${name}. Promoted posts rise here when other users push them up.`;
+  }
+}
+
+function promotionScoreFor(post: FeedPost, index: number) {
+  return Math.max(42, Math.min(99, 96 - index * 7 + (post.id % 11)));
+}
+
+function navIcon(view: HomeView) {
+  switch (view) {
+    case "live":
+      return "Live";
+    case "studio":
+      return "Studio";
+    case "channels":
+      return "Chan";
+    case "profile":
+      return "Me";
+    default:
+      return "Home";
   }
 }
 
