@@ -10,11 +10,11 @@ type Service struct {
 
 func Registry() map[string]Service {
 	return map[string]Service{
-		"auth":          {Name: "auth", Route: "auth", BaseURL: "http://127.0.0.1:" + getEnv("AUTH_SERVICE_PORT", "18001")},
-		"subscriptions": {Name: "subscriptions", Route: "subscriptions", BaseURL: "http://127.0.0.1:" + getEnv("SUBSCRIPTION_SERVICE_PORT", "18003")},
-		"posts":         {Name: "posts", Route: "posts", BaseURL: "http://127.0.0.1:" + getEnv("POST_SERVICE_PORT", "18005")},
-		"streams":       {Name: "streams", Route: "streams", BaseURL: "http://127.0.0.1:" + getEnv("STREAM_SERVICE_PORT", "18006")},
-		"wallet":        {Name: "wallet", Route: "wallet", BaseURL: "http://127.0.0.1:" + getEnv("WALLET_SERVICE_PORT", "18007")},
+		"auth":          {Name: "auth", Route: "auth", BaseURL: getEnv("AUTH_SERVICE_URL", "http://127.0.0.1:"+getEnv("AUTH_SERVICE_PORT", "8001"))},
+		"subscriptions": {Name: "subscriptions", Route: "subscriptions", BaseURL: getEnv("SUBSCRIPTION_SERVICE_URL", "http://127.0.0.1:"+getEnv("SUBSCRIPTION_SERVICE_PORT", "8003"))},
+		"posts":         {Name: "posts", Route: "posts", BaseURL: getEnv("POST_SERVICE_URL", "http://127.0.0.1:"+getEnv("POST_SERVICE_PORT", "8005"))},
+		"streams":       {Name: "streams", Route: "streams", BaseURL: getEnv("STREAM_SERVICE_URL", "http://127.0.0.1:"+getEnv("STREAM_SERVICE_PORT", "8006"))},
+		"wallet":        {Name: "wallet", Route: "wallet", BaseURL: getEnv("WALLET_SERVICE_URL", "http://127.0.0.1:"+getEnv("WALLET_SERVICE_PORT", "8007"))},
 	}
 }
 

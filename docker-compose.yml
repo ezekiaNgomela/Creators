@@ -39,24 +39,98 @@ services:
     volumes:
       - minio_data:/data
 
-  backend:
+  gateway:
     build:
-      context: ./apps/api
+      context: ./backend
+      dockerfile: Dockerfile.next
+      args:
+        SERVICE_PATH: gateway-next
+        BINARY_NAME: gateway-next
     environment:
-      APP_PORT: 8080
-      POSTGRES_URL: ${POSTGRES_URL}
-      REDIS_URL: ${REDIS_URL}
-      MINIO_HEALTH_URL: ${MINIO_HEALTH_URL}
+      GATEWAY_PORT: 8080
       FRONTEND_ORIGIN: http://localhost:${WEB_PORT}
+      FRONTEND_URL: http://localhost:${WEB_PORT}
+      AUTH_SERVICE_URL: http://auth:8001
+      SUBSCRIPTION_SERVICE_URL: http://subscription:8003
+      POST_SERVICE_URL: http://post:8005
+      STREAM_SERVICE_URL: http://stream:8006
+      WALLET_SERVICE_URL: http://wallet:8007
     ports:
       - "${API_PORT}:8080"
     depends_on:
+      auth:
+        condition: service_started
+      subscription:
+        condition: service_started
+      post:
+        condition: service_started
+      stream:
+        condition: service_started
+      wallet:
+        condition: service_started
+
+  auth:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.next
+      args:
+        SERVICE_PATH: services/auth-service-next
+        BINARY_NAME: auth-service-next
+    environment:
+      AUTH_SERVICE_PORT: 8001
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER}
+      FRONTEND_URL: http://localhost:${WEB_PORT}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
+    depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_started
+
+  subscription:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.next
+      args:
+        SERVICE_PATH: services/subscription-service-next
+        BINARY_NAME: subscription-service-next
+    environment:
+      SUBSCRIPTION_SERVICE_PORT: 8003
+
+  post:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.next
+      args:
+        SERVICE_PATH: services/post-service-next
+        BINARY_NAME: post-service-next
+    environment:
+      POST_SERVICE_PORT: 8005
+
+  stream:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.next
+      args:
+        SERVICE_PATH: services/stream-service-next
+        BINARY_NAME: stream-service-next
+    environment:
+      STREAM_SERVICE_PORT: 8006
+      LIVEKIT_URL: ${LIVEKIT_URL}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+
+  wallet:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.next
+      args:
+        SERVICE_PATH: services/wallet-service-next
+        BINARY_NAME: wallet-service-next
+    environment:
+      WALLET_SERVICE_PORT: 8007
 
   frontend:
     build:
@@ -66,7 +140,7 @@ services:
     ports:
       - "${WEB_PORT}:5173"
     depends_on:
-      backend:
+      gateway:
         condition: service_started
 
 volumes:
