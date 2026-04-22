@@ -29,6 +29,25 @@ if (Test-Path $stateFile) {
     Stop-Pid $state.services.postgres.pid "postgres"
 }
 
+$knownRoots = @($runtimeDir, (Join-Path $repoRoot "apps\web"))
+$orphanProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object {
+        if ($_.ProcessId -eq $PID -or [string]::IsNullOrWhiteSpace($_.CommandLine)) {
+            return $false
+        }
+        foreach ($root in $knownRoots) {
+            if ($_.CommandLine -like "*$root*") {
+                return $true
+            }
+        }
+        return $false
+    }
+
+foreach ($process in $orphanProcesses) {
+    Write-Step "stopping orphan $($process.Name) pid=$($process.ProcessId)"
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+}
+
 $pgCtl = Get-Command pg_ctl.exe -ErrorAction SilentlyContinue
 if (-not $pgCtl) {
     $pgCtl = Get-ChildItem "C:\Program Files\PostgreSQL" -Directory -ErrorAction SilentlyContinue |
@@ -39,9 +58,9 @@ if (-not $pgCtl) {
 }
 
 $pgData = Join-Path $runtimeDir "postgres-data"
-if ($pgCtl -and (Test-Path (Join-Path $pgData "PG_VERSION"))) {
+if ($pgCtl -and (Test-Path (Join-Path $pgData "postmaster.pid"))) {
     Write-Step "stopping Postgres"
-    & $pgCtl -D $pgData stop -m fast | Out-Null
+    & $pgCtl -D $pgData stop -m fast 2>$null | Out-Null
 }
 
 $listener = Get-NetTCPConnection -State Listen -LocalPort 15432 -ErrorAction SilentlyContinue | Select-Object -First 1

@@ -88,13 +88,43 @@ function Get-PostgresTool($Name) {
     throw "Postgres tool '$Name.exe' was not found. Install PostgreSQL locally, then run this again."
 }
 
-function Download-File($Url, $OutputPath) {
+function Download-File($Url, $OutputPath, [long]$MinBytes = 1) {
     if (Test-Path $OutputPath) {
-        return
+        $existing = Get-Item -LiteralPath $OutputPath
+        if ($existing.Length -ge $MinBytes) {
+            return
+        }
+        Write-Warn "removing incomplete download $OutputPath"
+        Remove-Item -LiteralPath $OutputPath -Force
+    }
+
+    $partialPath = "$OutputPath.partial"
+    if (Test-Path $partialPath) {
+        Remove-Item -LiteralPath $partialPath -Force
     }
 
     Write-Step "downloading $Url"
-    Invoke-WebRequest -Uri $Url -OutFile $OutputPath -UseBasicParsing
+    Invoke-WebRequest -Uri $Url -OutFile $partialPath -UseBasicParsing
+
+    $downloaded = Get-Item -LiteralPath $partialPath
+    if ($downloaded.Length -lt $MinBytes) {
+        Remove-Item -LiteralPath $partialPath -Force -ErrorAction SilentlyContinue
+        throw "Downloaded file from $Url was smaller than expected."
+    }
+
+    Move-Item -LiteralPath $partialPath -Destination $OutputPath -Force
+}
+
+function Assert-ToolFile($Path, $Name, [long]$MinBytes) {
+    if (Test-Path $Path) {
+        $file = Get-Item -LiteralPath $Path
+        if ($file.Length -ge $MinBytes) {
+            return $true
+        }
+        Write-Warn "removing incomplete $Name at $Path"
+        Remove-Item -LiteralPath $Path -Force
+    }
+    return $false
 }
 
 function Install-Redis {
@@ -110,7 +140,7 @@ function Install-Redis {
 
     $zipPath = Join-Path $downloadsDir "redis-windows-5.0.14.1.zip"
     $redisRoot = Join-Path $toolsDir "redis"
-    Download-File "https://github.com/tporadowski/redis/releases/download/v5.0.14.1/Redis-x64-5.0.14.1.zip" $zipPath
+    Download-File "https://github.com/tporadowski/redis/releases/download/v5.0.14.1/Redis-x64-5.0.14.1.zip" $zipPath 1000000
     New-Item -ItemType Directory -Force $redisRoot | Out-Null
     Expand-Archive -LiteralPath $zipPath -DestinationPath $redisRoot -Force
 
@@ -125,7 +155,7 @@ function Install-Redis {
 function Install-MinIO {
     $minioRoot = Join-Path $toolsDir "minio"
     $minioExe = Join-Path $minioRoot "minio.exe"
-    if (Test-Path $minioExe) {
+    if (Assert-ToolFile $minioExe "MinIO" 10000000) {
         return $minioExe
     }
 
@@ -134,7 +164,7 @@ function Install-MinIO {
     }
 
     New-Item -ItemType Directory -Force $minioRoot | Out-Null
-    Download-File "https://dl.min.io/server/minio/release/windows-amd64/minio.exe" $minioExe
+    Download-File "https://dl.min.io/server/minio/release/windows-amd64/minio.exe" $minioExe 10000000
     return $minioExe
 }
 
@@ -462,45 +492,56 @@ function Start-Frontend {
     }
 }
 
-Stop-LocalProcesses
+function Start-LocalMain {
+    Stop-LocalProcesses
 
-Write-Stage "services:start"
-$pg = Start-Postgres
-Write-Stage "services:postgres-ready"
-$redis = Start-Redis
-Write-Stage "services:redis-ready"
-$minio = Start-MinIO
-Write-Stage "services:minio-ready"
+    Write-Stage "services:start"
+    $pg = Start-Postgres
+    Write-Stage "services:postgres-ready"
+    $redis = Start-Redis
+    Write-Stage "services:redis-ready"
+    $minio = Start-MinIO
+    Write-Stage "services:minio-ready"
 
-$api = $null
-if (-not $NoBackend -and -not $ServicesOnly) {
-    $api = Start-Backend -PostgresUrl $pg.Url -RedisUrl $redis.Url -MinioHealthUrl $minio.HealthUrl
-}
-
-$frontend = $null
-if (-not $NoFrontend -and -not $ServicesOnly) {
-    $frontend = Start-Frontend
-}
-
-$state = [ordered]@{
-    startedAt = (Get-Date).ToString("o")
-    services = [ordered]@{
-        postgres = @{ port = $pg.Port; data = Join-Path $runtimeDir "postgres-data"; pid = if ($pg.Process) { $pg.Process.Id } else { $null } }
-        redis = @{ port = $redis.Port; pid = $redis.Process.Id }
-        minio = @{ healthUrl = $minio.HealthUrl; consoleUrl = $minio.ConsoleUrl; pid = $minio.Process.Id }
+    $api = $null
+    if (-not $NoBackend -and -not $ServicesOnly) {
+        $api = Start-Backend -PostgresUrl $pg.Url -RedisUrl $redis.Url -MinioHealthUrl $minio.HealthUrl
     }
-    backend = if ($api) { @{ healthUrl = $api.HealthUrl; pid = $api.Process.Id } } else { $null }
-    frontend = if ($frontend) { @{ url = $frontend.Url; pid = $frontend.Process.Id } } else { $null }
+
+    $frontend = $null
+    if (-not $NoFrontend -and -not $ServicesOnly) {
+        $frontend = Start-Frontend
+    }
+
+    $state = [ordered]@{
+        startedAt = (Get-Date).ToString("o")
+        services = [ordered]@{
+            postgres = @{ port = $pg.Port; data = Join-Path $runtimeDir "postgres-data"; pid = if ($pg.Process) { $pg.Process.Id } else { $null } }
+            redis = @{ port = $redis.Port; pid = $redis.Process.Id }
+            minio = @{ healthUrl = $minio.HealthUrl; consoleUrl = $minio.ConsoleUrl; pid = $minio.Process.Id }
+        }
+        backend = if ($api) { @{ healthUrl = $api.HealthUrl; pid = $api.Process.Id } } else { $null }
+        frontend = if ($frontend) { @{ url = $frontend.Url; pid = $frontend.Process.Id } } else { $null }
+    }
+
+    $state | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $stateFile
+
+    Write-Ready "local stack started"
+    if ($frontend) {
+        Write-Host "web:     $($frontend.Url)"
+    }
+    if ($api) {
+        Write-Host "api:     $($api.HealthUrl)"
+    }
+    Write-Host "minio:   $($minio.ConsoleUrl)"
+    Write-Host "logs:    $logDir"
 }
 
-$state | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $stateFile
-
-Write-Ready "local stack started"
-if ($frontend) {
-    Write-Host "web:     $($frontend.Url)"
+try {
+    Start-LocalMain
+} catch {
+    Write-Host "[error] $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "stage:   $stageFile"
+    Write-Host "logs:    $logDir"
+    exit 1
 }
-if ($api) {
-    Write-Host "api:     $($api.HealthUrl)"
-}
-Write-Host "minio:   $($minio.ConsoleUrl)"
-Write-Host "logs:    $logDir"
