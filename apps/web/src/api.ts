@@ -51,6 +51,54 @@ export type FeedResponse = {
   posts: FeedPost[];
 };
 
+export type ProfileResponse = {
+  user: AuthUser;
+  bio: string;
+  headline: string;
+  location: string;
+};
+
+export type Comment = {
+  id: number;
+  targetId: number;
+  targetType: "post" | "live" | string;
+  body: string;
+  author: AuthUser;
+  createdAt: string;
+};
+
+export type LiveRating = {
+  liveRoomId: number;
+  average: number;
+  count: number;
+  userScore: number;
+};
+
+export type LiveIndex = {
+  live: LiveRoom[];
+  scheduled: LiveRoom[];
+  previous: LiveRoom[];
+  following: LiveRoom[];
+  ratings: LiveRating[];
+};
+
+export type ChatContact = {
+  id: string;
+  name: string;
+  subtitle: string;
+  lastBody: string;
+  updatedAt: string;
+};
+
+export type ChatMessage = {
+  id: number;
+  contactId: string;
+  body: string;
+  sender: AuthUser;
+  createdAt: string;
+  own: boolean;
+};
+
 type ApiError = {
   message?: string;
 };
@@ -149,4 +197,57 @@ export async function createPost(input: { body: string; mood: string }): Promise
     body: JSON.stringify(input),
   });
   return response.post;
+}
+
+export async function fetchProfile(): Promise<ProfileResponse> {
+  return apiRequest<ProfileResponse>("/profile");
+}
+
+export async function updateProfile(input: { name: string; bio: string; headline: string; location: string }): Promise<ProfileResponse> {
+  return apiRequest<ProfileResponse>("/profile", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchLiveIndex(): Promise<LiveIndex> {
+  return apiRequest<LiveIndex>("/live");
+}
+
+export async function rateLiveRoom(input: { liveRoomId: number; score: number }): Promise<LiveRating> {
+  return apiRequest<LiveRating>("/live/rate", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchComments(targetType: "post" | "live", targetId: number): Promise<Comment[]> {
+  const response = await apiRequest<{ comments: Comment[] }>(`/comments?targetType=${encodeURIComponent(targetType)}&targetId=${targetId}`);
+  return response.comments;
+}
+
+export async function createComment(input: { targetType: "post" | "live"; targetId: number; body: string }): Promise<Comment> {
+  const response = await apiRequest<{ comment: Comment }>("/comments", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.comment;
+}
+
+export async function fetchChatContacts(): Promise<ChatContact[]> {
+  const response = await apiRequest<{ contacts: ChatContact[] }>("/chats");
+  return response.contacts;
+}
+
+export async function fetchChatMessages(contactId: string): Promise<ChatMessage[]> {
+  const response = await apiRequest<{ messages: ChatMessage[] }>(`/chats/messages?contactId=${encodeURIComponent(contactId)}`);
+  return response.messages;
+}
+
+export async function sendChatMessage(input: { contactId: string; body: string }): Promise<ChatMessage> {
+  const response = await apiRequest<{ message: ChatMessage }>("/chats/messages", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.message;
 }

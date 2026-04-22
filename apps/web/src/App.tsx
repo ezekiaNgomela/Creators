@@ -1,22 +1,53 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   clearStoredToken,
+  createComment,
   fetchCurrentUser,
+  fetchChatContacts,
+  fetchChatMessages,
+  fetchComments,
   fetchFeed,
   fetchHealth,
+  fetchLiveIndex,
+  fetchProfile,
   getGoogleAuthUrl,
   loginAccount,
   logoutAccount,
+  rateLiveRoom,
   registerAccount,
+  sendChatMessage,
   storeToken,
+  updateProfile,
   type AuthUser,
+  type ChatContact,
+  type ChatMessage,
+  type Comment,
   type FeedPost,
   type HealthResponse,
+  type LiveIndex,
+  type LiveRating,
   type LiveRoom,
+  type ProfileResponse,
 } from "./api";
 
 type AuthMode = "login" | "register";
-type HomeView = "home" | "live" | "studio" | "channels" | "profile";
+type HomeTab = "home" | "streams" | "messages" | "notifications" | "profiles";
+
+type DisplayPost = FeedPost & {
+  comments: number;
+  gallery: string[];
+  likes: number;
+  promotionScore: number;
+  tags: string[];
+};
+
+const bottomTabs: Array<{ id: HomeTab; label: string; icon: string }> = [
+  { id: "home", label: "Home", icon: "Home" },
+  { id: "streams", label: "Streams", icon: "Live" },
+  { id: "messages", label: "Messages", icon: "Msg" },
+  { id: "notifications", label: "Notifications", icon: "Bell" },
+  { id: "profiles", label: "Profiles", icon: "Me" },
+];
 
 const featureRows = [
   {
@@ -33,12 +64,43 @@ const featureRows = [
   },
 ];
 
-const homeViews: Array<{ id: HomeView; label: string }> = [
-  { id: "home", label: "Home" },
-  { id: "live", label: "Live" },
-  { id: "studio", label: "Studio" },
-  { id: "channels", label: "Channels" },
-  { id: "profile", label: "Profile" },
+const fallbackPosts: DisplayPost[] = [
+  {
+    id: 901,
+    author: {
+      id: 901,
+      createdAt: new Date().toISOString(),
+      email: "christina@creators.local",
+      name: "Christina Kennedy",
+      provider: "seed",
+    },
+    body: "The state of Utah in the United States is home to lots of beautiful National Parks, and Bryce Canyon National Park ranks as three of the most magnificent.",
+    comments: 348,
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    gallery: [postImageFor(1), postImageFor(2), postImageFor(3), postImageFor(4), postImageFor(5)],
+    likes: 1125,
+    mood: "Travel",
+    promotionScore: 94,
+    tags: ["relax", "travel"],
+  },
+  {
+    id: 902,
+    author: {
+      id: 902,
+      createdAt: new Date().toISOString(),
+      email: "gerald@creators.local",
+      name: "Gerald Thomas",
+      provider: "seed",
+    },
+    body: "St. Urber is one of the biggest superstars to have emerged from the professional maker world this year.",
+    comments: 128,
+    createdAt: new Date(Date.now() - 2.6 * 60 * 60 * 1000).toISOString(),
+    gallery: [postImageFor(6), postImageFor(7), postImageFor(8), postImageFor(9)],
+    likes: 784,
+    mood: "Creators",
+    promotionScore: 88,
+    tags: ["studio", "creator"],
+  },
 ];
 
 export default function App() {
@@ -103,14 +165,13 @@ export default function App() {
 
   if (user) {
     return (
-      <Home
+      <HomeApp
         health={health}
         notice={notice}
         serviceLabel={serviceLabel}
         user={user}
         onDismissNotice={() => setNotice("")}
         onLogout={() => void handleLogout()}
-        onNotice={setNotice}
       />
     );
   }
@@ -212,14 +273,13 @@ export default function App() {
   );
 }
 
-function Home({
+function HomeApp({
   health,
   notice,
   serviceLabel,
   user,
   onDismissNotice,
   onLogout,
-  onNotice,
 }: {
   health: HealthResponse | null;
   notice: string;
@@ -227,22 +287,27 @@ function Home({
   user: AuthUser;
   onDismissNotice: () => void;
   onLogout: () => void;
-  onNotice: (message: string) => void;
 }) {
-  const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<HomeTab>("home");
+  const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
   const [feedError, setFeedError] = useState("");
-  const [activeView, setActiveView] = useState<HomeView>("home");
+  const [liveIndex, setLiveIndex] = useState<LiveIndex | null>(null);
+  const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [selectedLiveId, setSelectedLiveId] = useState<number | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedThreadId, setSelectedThreadId] = useState("alejandro-hicks");
 
-  const activeLabel = homeViews.find((item) => item.id === activeView)?.label ?? "Home";
+  const displayPosts = useMemo(() => createDisplayPosts(posts), [posts]);
   const selectedLive = liveRooms.find((room) => room.id === selectedLiveId) ?? liveRooms[0] ?? null;
-  const promotedPosts = useMemo(() => posts.map((post, index) => ({
-    ...post,
-    promotionScore: promotionScoreFor(post, index),
-  })).sort((left, right) => right.promotionScore - left.promotionScore), [posts]);
+  const ratingsByLiveId = useMemo(() => {
+    const ratings = new Map<number, LiveRating>();
+    liveIndex?.ratings.forEach((rating) => ratings.set(rating.liveRoomId, rating));
+    return ratings;
+  }, [liveIndex]);
 
   async function loadFeed() {
     setLoading(true);
@@ -251,6 +316,9 @@ function Home({
       const feed = await fetchFeed();
       setLiveRooms(feed.liveRooms);
       setPosts(feed.posts);
+      setLiveIndex(await fetchLiveIndex());
+      setProfile(await fetchProfile());
+      setChatContacts(await fetchChatContacts());
     } catch (err) {
       setFeedError(err instanceof Error ? err.message : "Could not load feed");
     } finally {
@@ -262,94 +330,108 @@ function Home({
     void loadFeed();
   }, []);
 
-  function openLive(room: LiveRoom) {
+  function openStream(room: LiveRoom) {
     setSelectedLiveId(room.id);
-    setActiveView("live");
+    setActiveTab("streams");
+  }
+
+  async function loadPostComments(postId: number) {
+    setComments(await fetchComments("post", postId));
+  }
+
+  async function addPostComment(postId: number, body: string) {
+    const comment = await createComment({ targetType: "post", targetId: postId, body });
+    setComments((current) => [...current, comment]);
+  }
+
+  async function loadLiveComments(liveId: number) {
+    setComments(await fetchComments("live", liveId));
+  }
+
+  async function addLiveComment(liveId: number, body: string) {
+    const comment = await createComment({ targetType: "live", targetId: liveId, body });
+    setComments((current) => [...current, comment]);
+  }
+
+  async function updateLiveRating(liveRoomId: number, score: number) {
+    const rating = await rateLiveRoom({ liveRoomId, score });
+    setLiveIndex((current) => {
+      if (!current) {
+        return current;
+      }
+      const ratings = current.ratings.filter((item) => item.liveRoomId !== liveRoomId);
+      return { ...current, ratings: [...ratings, rating] };
+    });
+  }
+
+  async function openThread(contactId: string) {
+    setSelectedThreadId(contactId);
+    setChatMessages(await fetchChatMessages(contactId));
+  }
+
+  async function sendMessage(body: string) {
+    const message = await sendChatMessage({ contactId: selectedThreadId, body });
+    setChatMessages((current) => [...current, message]);
+    setChatContacts(await fetchChatContacts());
+  }
+
+  async function saveProfile(input: { name: string; bio: string; headline: string; location: string }) {
+    setProfile(await updateProfile(input));
   }
 
   return (
-    <main className="home-shell">
-      <header className="mobile-topbar">
-        <button className="mini-menu" type="button" aria-label="Open menu" onClick={() => setMenuOpen((open) => !open)}>
-          <span />
-          <span />
-        </button>
-        <a className="home-brand" href="/" aria-label="Creators home">
-          <span className="brand-mark" aria-hidden="true">C</span>
-          <span>Creators</span>
-        </a>
-        <button className="profile-chip" type="button" onClick={() => setActiveView("profile")}>
-          <img alt="" src={profileImageFor(user.name)} />
-          <span>{user.name}</span>
-        </button>
-      </header>
+    <main className="social-shell">
+      <section className="phone-frame">
+        {activeTab === "home" ? (
+          <>
+            <StoryHeader liveRooms={liveRooms} onOpenStream={openStream} user={user} />
+            {feedError ? <p className="feed-error">{feedError}</p> : null}
+            <HomeFeed
+              comments={comments}
+              loading={loading}
+              onAddComment={addPostComment}
+              onLoadComments={loadPostComments}
+              posts={displayPosts}
+            />
+          </>
+        ) : null}
 
-      {menuOpen ? (
-        <div className="quick-menu">
-          <button type="button" onClick={() => void loadFeed()} disabled={loading}>Refresh feed</button>
-          <button type="button" onClick={onLogout}>Sign out</button>
-        </div>
-      ) : null}
+        {activeTab === "streams" ? (
+          <StreamScreen
+            comments={comments}
+            liveIndex={liveIndex}
+            liveRooms={liveRooms}
+            onAddComment={addLiveComment}
+            onClose={() => setActiveTab("home")}
+            onLoadComments={loadLiveComments}
+            onOpenStream={openStream}
+            onRate={updateLiveRating}
+            ratingsByLiveId={ratingsByLiveId}
+            selectedLive={selectedLive}
+          />
+        ) : null}
 
-      <section className="home-main">
-        <header className="home-header glass-panel">
-          <div>
-            <p className="section-kicker">{activeLabel}</p>
-            <h1>{activeView === "home" ? "Promoted for you" : activeLabel}</h1>
-            <p>{homeViewCopy(activeView, user.name)}</p>
-          </div>
-          <div className="home-actions">
-            <button className="ghost-button on-light" type="button" onClick={() => void loadFeed()} disabled={loading}>
-              Refresh
-            </button>
-            <button className="solid-button" type="button" onClick={onLogout}>
-              Sign out
-            </button>
-          </div>
-        </header>
+        {activeTab === "messages" ? (
+          <SearchMessages
+            contacts={chatContacts}
+            messages={chatMessages}
+            onOpenProfile={() => setActiveTab("profiles")}
+            onOpenThread={openThread}
+            onSendMessage={sendMessage}
+            selectedThreadId={selectedThreadId}
+          />
+        ) : null}
 
-        {feedError ? <p className="feed-error">{feedError}</p> : null}
+        {activeTab === "notifications" ? (
+          <NotificationsPanel posts={displayPosts} serviceLabel={serviceLabel} />
+        ) : null}
 
-        <div className="home-outlet" aria-live="polite">
-          {activeView === "home" ? (
-            <>
-              <LiveHighlightArea liveRooms={liveRooms} onOpenLive={openLive} />
-              <PromotedPostOutlet loading={loading} posts={promotedPosts} />
-            </>
-          ) : null}
+        {activeTab === "profiles" ? (
+          <ProfilePanel health={health} onLogout={onLogout} onSaveProfile={saveProfile} posts={displayPosts} profile={profile} user={profile?.user ?? user} />
+        ) : null}
 
-          {activeView === "live" ? (
-            <LiveOutlet liveRooms={liveRooms} selectedLive={selectedLive} onOpenLive={openLive} />
-          ) : null}
-
-          {activeView === "studio" ? (
-            <StudioOutlet health={health} posts={posts} user={user} />
-          ) : null}
-
-          {activeView === "channels" ? (
-            <ChannelsOutlet liveRooms={liveRooms} posts={posts} />
-          ) : null}
-
-          {activeView === "profile" ? (
-            <ProfileOutlet health={health} onLogout={onLogout} posts={posts} user={user} />
-          ) : null}
-        </div>
+        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
       </section>
-
-      <nav className="bottom-nav" aria-label="Primary">
-        {homeViews.map((item) => (
-          <button
-            aria-current={activeView === item.id ? "page" : undefined}
-            className={activeView === item.id ? "is-active" : ""}
-            key={item.id}
-            type="button"
-            onClick={() => setActiveView(item.id)}
-          >
-            <span aria-hidden="true">{navIcon(item.id)}</span>
-            <small>{item.label}</small>
-          </button>
-        ))}
-      </nav>
 
       {notice ? (
         <div className="toast" role="status">
@@ -363,163 +445,415 @@ function Home({
   );
 }
 
-type PromotedPost = FeedPost & { promotionScore: number };
+function StoryHeader({ liveRooms, onOpenStream, user }: { liveRooms: LiveRoom[]; onOpenStream: (room: LiveRoom) => void; user: AuthUser }) {
+  return (
+    <header className="story-header" aria-label="Live stories">
+      <button className="send-bubble" type="button" aria-label="Create">
+        <span>Go</span>
+      </button>
+      {liveRooms.map((room, index) => (
+        <button className="story-avatar" key={room.id} type="button" onClick={() => onOpenStream(room)}>
+          <span className="story-photo">
+            <img alt={`${room.host} profile`} src={profileImageFor(room.host)} />
+          </span>
+          {index === 0 ? <strong>LIVE</strong> : null}
+        </button>
+      ))}
+      <button className="story-avatar" type="button">
+        <span className="story-photo">
+          <img alt={`${user.name} profile`} src={profileImageFor(user.name)} />
+        </span>
+      </button>
+    </header>
+  );
+}
 
-function LiveHighlightArea({ liveRooms, onOpenLive }: { liveRooms: LiveRoom[]; onOpenLive: (room: LiveRoom) => void }) {
-  const featured = liveRooms[0];
+function HomeFeed({
+  comments,
+  loading,
+  onAddComment,
+  onLoadComments,
+  posts,
+}: {
+  comments: Comment[];
+  loading: boolean;
+  onAddComment: (postId: number, body: string) => Promise<void>;
+  onLoadComments: (postId: number) => Promise<void>;
+  posts: DisplayPost[];
+}) {
+  if (loading) {
+    return <p className="feed-muted">Loading the home feed...</p>;
+  }
 
   return (
-    <section className="live-highlight glass-panel" aria-label="Live feed highlights">
-      <div className="highlight-copy">
-        <p className="section-kicker">Live now</p>
-        <h2>{featured ? featured.title : "No live rooms yet"}</h2>
-        <p>{featured ? `${featured.host} - ${featured.status === "live" ? `made live ${timeAgo(featured.startsAt)}` : `starts in ${timeUntil(featured.startsAt)}`}` : "Live highlights will appear here."}</p>
-      </div>
-      <div className="live-cover-row">
-        {liveRooms.map((room) => (
-          <button className="live-cover-button" key={room.id} type="button" onClick={() => onOpenLive(room)}>
-            <span className="live-avatar-ring">
-              <img alt={`${room.host} profile`} src={profileImageFor(room.host)} />
-            </span>
-            <span>{room.host}</span>
-            <small>{room.status === "live" ? timeAgo(room.startsAt) : `in ${timeUntil(room.startsAt)}`}</small>
-          </button>
+    <section className="home-feed" aria-label="Home feed">
+      {posts.map((post) => (
+        <FeedCard comments={comments.filter((comment) => comment.targetType === "post" && comment.targetId === post.id)} key={post.id} onAddComment={onAddComment} onLoadComments={onLoadComments} post={post} />
+      ))}
+    </section>
+  );
+}
+
+function FeedCard({
+  comments,
+  onAddComment,
+  onLoadComments,
+  post,
+}: {
+  comments: Comment[];
+  onAddComment: (postId: number, body: string) => Promise<void>;
+  onLoadComments: (postId: number) => Promise<void>;
+  post: DisplayPost;
+}) {
+  const [commentText, setCommentText] = useState("");
+  const [open, setOpen] = useState(false);
+
+  async function submitComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!commentText.trim()) {
+      return;
+    }
+    await onAddComment(post.id, commentText);
+    setCommentText("");
+    setOpen(true);
+  }
+
+  return (
+    <article className="feed-card">
+      <header className="feed-card-header">
+        <img alt="" src={profileImageFor(post.author.name)} />
+        <div>
+          <h2>{post.author.name}</h2>
+          <span>{timeAgo(post.createdAt)}</span>
+        </div>
+        <button type="button">FOLLOW</button>
+      </header>
+
+      <div className="tag-row">
+        {post.tags.map((tag) => (
+          <span key={tag}>#{tag}</span>
         ))}
       </div>
-    </section>
-  );
-}
 
-function PromotedPostOutlet({ loading, posts }: { loading: boolean; posts: PromotedPost[] }) {
-  return (
-    <section className="promoted-outlet" aria-label="Promoted posts">
-      <div className="feed-heading">
-        <h2>Promoted posts</h2>
-        <span>{posts.length} ranked</span>
+      <p className="feed-copy">{post.body}</p>
+
+      <div className="photo-grid">
+        <img className="photo-grid-main" alt="" src={post.gallery[0]} />
+        {post.gallery.slice(1, 5).map((image, index) => (
+          <div className="photo-tile" key={image}>
+            <img alt="" src={image} />
+            {index === 3 ? <span>+23</span> : null}
+          </div>
+        ))}
       </div>
-      {loading ? <p className="feed-muted">Loading promoted posts...</p> : null}
-      {!loading && posts.length === 0 ? (
-        <div className="empty-feed glass-panel">
-          <h3>No promoted posts yet</h3>
-          <p>Posts that receive promotion from other users will rise into this feed.</p>
+
+      <footer className="feed-actions">
+        <span className="heart">Love</span>
+        <span>{post.likes}</span>
+        <button className="comment" type="button" onClick={() => { setOpen((value) => !value); void onLoadComments(post.id); }}>Chat</button>
+        <span>{post.comments + comments.length}</span>
+        <div className="reader-stack">
+          <img alt="" src={profileImageFor(`${post.author.name}-1`)} />
+          <img alt="" src={profileImageFor(`${post.author.name}-2`)} />
+          <img alt="" src={profileImageFor(`${post.author.name}-3`)} />
         </div>
+      </footer>
+      {open ? (
+        <section className="comment-panel">
+          {comments.map((comment) => (
+            <p key={comment.id}><strong>{comment.author.name}</strong> {comment.body}</p>
+          ))}
+          <form onSubmit={(event) => void submitComment(event)}>
+            <input value={commentText} placeholder="Write a comment" onChange={(event) => setCommentText(event.target.value)} />
+            <button type="submit">Send</button>
+          </form>
+        </section>
       ) : null}
-      {posts.map((post) => (
-        <article className="promotion-post glass-panel" key={post.id}>
-          <div className="promotion-visual" style={{ backgroundImage: `url("${postImageFor(post.id)}")` }}>
-            <span>{post.promotionScore}% promoted</span>
-          </div>
-          <div className="promotion-body">
-            <header>
-              <img className="avatar-img" alt="" src={profileImageFor(post.author.name)} />
-              <div>
-                <strong>{post.author.name}</strong>
-                <small>{post.mood} - {timeAgo(post.createdAt)}</small>
-              </div>
-            </header>
-            <p>{post.body}</p>
-            <div className="promotion-meter" aria-label={`Promoted ${post.promotionScore} percent`}>
-              <span style={{ width: `${post.promotionScore}%` }} />
-            </div>
-          </div>
-        </article>
-      ))}
-    </section>
+    </article>
   );
 }
 
-function LiveOutlet({
+function StreamScreen({
+  comments,
+  liveIndex,
   liveRooms,
+  onAddComment,
   selectedLive,
-  onOpenLive,
+  onClose,
+  onLoadComments,
+  onOpenStream,
+  onRate,
+  ratingsByLiveId,
 }: {
+  comments: Comment[];
+  liveIndex: LiveIndex | null;
   liveRooms: LiveRoom[];
+  onAddComment: (liveId: number, body: string) => Promise<void>;
   selectedLive: LiveRoom | null;
-  onOpenLive: (room: LiveRoom) => void;
+  onClose: () => void;
+  onLoadComments: (liveId: number) => Promise<void>;
+  onOpenStream: (room: LiveRoom) => void;
+  onRate: (liveRoomId: number, score: number) => Promise<void>;
+  ratingsByLiveId: Map<number, LiveRating>;
 }) {
+  const live = selectedLive ?? liveRooms[0];
+  const [commentText, setCommentText] = useState("");
+
+  useEffect(() => {
+    if (live) {
+      void onLoadComments(live.id);
+    }
+  }, [live?.id]);
+
+  if (!live) {
+    return (
+      <section className="empty-stream">
+        <button type="button" onClick={onClose}>x</button>
+        <h1>No streams yet</h1>
+      </section>
+    );
+  }
+
+  async function submitComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!live || !commentText.trim()) {
+      return;
+    }
+    await onAddComment(live.id, commentText);
+    setCommentText("");
+  }
+
+  const rating = ratingsByLiveId.get(live.id);
+
   return (
-    <section className="live-outlet">
-      {selectedLive ? (
-        <article className="live-player glass-panel">
-          <img alt={`${selectedLive.host} profile`} src={profileImageFor(selectedLive.host)} />
-          <div>
-            <span>{selectedLive.status}</span>
-            <h2>{selectedLive.title}</h2>
-            <p>{selectedLive.host} - made live {timeAgo(selectedLive.startsAt)}</p>
-          </div>
-        </article>
-      ) : null}
-      <LiveHighlightArea liveRooms={liveRooms} onOpenLive={onOpenLive} />
+    <section className="stream-screen" style={{ backgroundImage: `url("${streamImageFor(live.id)}")` }}>
+      <button className="stream-close" type="button" onClick={onClose}>x</button>
+      <header className="stream-host">
+        <img alt="" src={profileImageFor(live.host)} />
+        <div>
+          <strong>{live.host}</strong>
+          <span>{elapsedTime(live.startsAt)}</span>
+        </div>
+      </header>
+
+      <aside className="stream-switcher" aria-label="Other streams">
+        {(liveIndex?.following ?? liveRooms).map((room) => (
+          <button key={room.id} type="button" onClick={() => onOpenStream(room)}>
+            <img alt="" src={profileImageFor(room.host)} />
+          </button>
+        ))}
+      </aside>
+
+      <div className="stream-share">Share with friends</div>
+      <div className="stream-comments">
+        <p><strong>Rating</strong> {rating ? `${rating.average.toFixed(1)} from ${rating.count}` : "No ratings yet"}</p>
+        {comments.filter((comment) => comment.targetType === "live" && comment.targetId === live.id).slice(-3).map((comment) => (
+          <p key={comment.id}><strong>{comment.author.name}</strong> {comment.body}</p>
+        ))}
+        <form onSubmit={(event) => void submitComment(event)}>
+          <input value={commentText} placeholder="Comment live" onChange={(event) => setCommentText(event.target.value)} />
+          <button type="submit">Send</button>
+        </form>
+      </div>
+      <div className="stream-rate" aria-label="Rate stream">
+        {[1, 2, 3, 4, 5].map((score) => (
+          <button className={rating?.userScore === score ? "active" : ""} key={score} type="button" onClick={() => void onRate(live.id, score)}>{score}</button>
+        ))}
+      </div>
+      <section className="stream-lists">
+        <StreamList title="Live" rooms={liveIndex?.live ?? liveRooms} onOpenStream={onOpenStream} />
+        <StreamList title="Events" rooms={liveIndex?.scheduled ?? []} onOpenStream={onOpenStream} />
+        <StreamList title="Previous" rooms={liveIndex?.previous ?? []} onOpenStream={onOpenStream} />
+      </section>
+      <div className="heart-float" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+      </div>
     </section>
   );
 }
 
-function StudioOutlet({ health, posts, user }: { health: HealthResponse | null; posts: FeedPost[]; user: AuthUser }) {
+function StreamList({ title, rooms, onOpenStream }: { title: string; rooms: LiveRoom[]; onOpenStream: (room: LiveRoom) => void }) {
   return (
-    <section className="studio-outlet">
-      <div className="studio-profile glass-panel">
-        <img className="studio-cover" alt="" src={postImageFor(user.id)} />
-        <img className="studio-avatar" alt="" src={profileImageFor(user.name)} />
-        <h2>{user.name}</h2>
-        <p>{user.email}</p>
+    <div>
+      <h2>{title}</h2>
+      {rooms.map((room) => (
+        <button key={room.id} type="button" onClick={() => onOpenStream(room)}>
+          <img alt="" src={profileImageFor(room.host)} />
+          <span>{room.title}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SearchMessages({
+  contacts,
+  messages,
+  onOpenProfile,
+  onOpenThread,
+  onSendMessage,
+  selectedThreadId,
+}: {
+  contacts: ChatContact[];
+  messages: ChatMessage[];
+  onOpenProfile: () => void;
+  onOpenThread: (contactId: string) => Promise<void>;
+  onSendMessage: (body: string) => Promise<void>;
+  selectedThreadId: string;
+}) {
+  const [messageText, setMessageText] = useState("");
+  const activeContact = contacts.find((contact) => contact.id === selectedThreadId);
+
+  async function submitMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!messageText.trim()) {
+      return;
+    }
+    await onSendMessage(messageText);
+    setMessageText("");
+  }
+
+  return (
+    <section className="search-panel">
+      <button className="panel-close" type="button">x</button>
+      <h1>Messages</h1>
+      <label className="search-box">
+        <span>Search</span>
+        <input placeholder="Search" />
+      </label>
+      <div className="recent-head">
+        <h2>Connected people</h2>
+        <button type="button" onClick={onOpenProfile}>Profile</button>
       </div>
-      <div className="studio-metrics">
-        <div className="glass-panel">
-          <strong>{posts.length}</strong>
-          <span>posts</span>
-        </div>
-        <div className="glass-panel">
-          <strong>{health?.status === "ok" ? "Live" : "Syncing"}</strong>
-          <span>backend</span>
-        </div>
-        <div className="glass-panel">
-          <strong>{user.provider}</strong>
-          <span>auth</span>
-        </div>
+      <div className="people-list">
+        {contacts.map((contact) => (
+          <article className={contact.id === selectedThreadId ? "active" : ""} key={contact.id}>
+            <button className="person-button" type="button" onClick={() => void onOpenThread(contact.id)}>
+              <img alt="" src={profileImageFor(contact.name)} />
+              <span>
+                <strong>{contact.name}</strong>
+                <small>{contact.lastBody || contact.subtitle}</small>
+              </span>
+            </button>
+            <button className="follow-pill" type="button">FOLLOW</button>
+          </article>
+        ))}
       </div>
+      <section className="chat-thread">
+        <h2>{activeContact?.name ?? "Chat"}</h2>
+        <div className="chat-bubbles">
+          {messages.map((message) => (
+            <p className={message.own ? "own" : ""} key={message.id}>{message.body}</p>
+          ))}
+        </div>
+        <form onSubmit={(event) => void submitMessage(event)}>
+          <input value={messageText} placeholder="Message" onChange={(event) => setMessageText(event.target.value)} />
+          <button type="submit">Send</button>
+        </form>
+      </section>
     </section>
   );
 }
 
-function ChannelsOutlet({ liveRooms, posts }: { liveRooms: LiveRoom[]; posts: FeedPost[] }) {
-  const channels = [
-    { name: "Launch Room", meta: `${posts.length} promoted posts`, image: postImageFor(1) },
-    { name: "Live Makers", meta: `${liveRooms.length} live sessions`, image: postImageFor(2) },
-    { name: "Studio Notes", meta: "Daily creator updates", image: postImageFor(3) },
-  ];
-
+function NotificationsPanel({ posts, serviceLabel }: { posts: DisplayPost[]; serviceLabel: string }) {
   return (
-    <section className="channels-outlet">
-      {channels.map((channel) => (
-        <article className="channel-row glass-panel" key={channel.name}>
-          <img alt="" src={channel.image} />
-          <div>
-            <h3>{channel.name}</h3>
-            <p>{channel.meta}</p>
-          </div>
-          <button type="button">Open</button>
+    <section className="notification-panel">
+      <h1>Notifications</h1>
+      <article>
+        <strong>{serviceLabel}</strong>
+        <p>Your backend feed is connected and ready.</p>
+      </article>
+      {posts.slice(0, 3).map((post) => (
+        <article key={post.id}>
+          <strong>{post.author.name}</strong>
+          <p>Your promotion score is now {post.promotionScore}%.</p>
         </article>
       ))}
     </section>
   );
 }
 
-function ProfileOutlet({
+function ProfilePanel({
   health,
   onLogout,
+  onSaveProfile,
   posts,
+  profile,
   user,
 }: {
   health: HealthResponse | null;
   onLogout: () => void;
-  posts: FeedPost[];
+  onSaveProfile: (input: { name: string; bio: string; headline: string; location: string }) => Promise<void>;
+  posts: DisplayPost[];
+  profile: ProfileResponse | null;
   user: AuthUser;
 }) {
+  const [bio, setBio] = useState(profile?.bio ?? "");
+  const [headline, setHeadline] = useState(profile?.headline ?? "Creator");
+  const [location, setLocation] = useState(profile?.location ?? "");
+  const [name, setName] = useState(user.name);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setName(user.name);
+    setBio(profile?.bio ?? "");
+    setHeadline(profile?.headline ?? "Creator");
+    setLocation(profile?.location ?? "");
+  }, [profile?.bio, profile?.headline, profile?.location, user.name]);
+
+  async function submitProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await onSaveProfile({ name, bio, headline, location });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <section className="profile-outlet">
-      <StudioOutlet health={health} posts={posts} user={user} />
-      <button className="solid-button profile-logout" type="button" onClick={onLogout}>Sign out</button>
+    <section className="profile-panel">
+      <div className="profile-hero" style={{ backgroundImage: `url("${postImageFor(user.id)}")` }}>
+        <img alt="" src={profileImageFor(user.name)} />
+      </div>
+      <h1>{user.name}</h1>
+      <p>{profile?.headline || user.email}</p>
+      <div className="profile-stats">
+        <span><strong>{posts.length}</strong> Posts</span>
+        <span><strong>{health?.status === "ok" ? "Live" : "Sync"}</strong> API</span>
+        <span><strong>{user.provider}</strong> Auth</span>
+      </div>
+      <form className="profile-edit" onSubmit={(event) => void submitProfile(event)}>
+        <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
+        <label>Headline<input value={headline} onChange={(event) => setHeadline(event.target.value)} /></label>
+        <label>Location<input value={location} onChange={(event) => setLocation(event.target.value)} /></label>
+        <label>Bio<textarea value={bio} onChange={(event) => setBio(event.target.value)} /></label>
+        <button className="follow-pill wide" type="submit" disabled={saving}>{saving ? "Saving..." : "Save profile"}</button>
+      </form>
+      <button className="follow-pill wide" type="button" onClick={onLogout}>Sign out</button>
     </section>
+  );
+}
+
+function BottomNav({ activeTab, onTabChange }: { activeTab: HomeTab; onTabChange: (tab: HomeTab) => void }) {
+  return (
+    <nav className="social-bottom-nav" aria-label="Primary">
+      {bottomTabs.map((tab) => (
+        <button
+          className={activeTab === tab.id ? "active" : ""}
+          key={tab.id}
+          type="button"
+          onClick={() => onTabChange(tab.id)}
+        >
+          <span>{tab.icon}</span>
+          <small>{tab.label}</small>
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -639,6 +973,18 @@ function AuthDialog({
   );
 }
 
+function createDisplayPosts(posts: FeedPost[]) {
+  const mapped = posts.map<DisplayPost>((post, index) => ({
+    ...post,
+    comments: 348 - index * 32,
+    gallery: [postImageFor(post.id), postImageFor(post.id + 1), postImageFor(post.id + 2), postImageFor(post.id + 3), postImageFor(post.id + 4)],
+    likes: 1125 - index * 121,
+    promotionScore: Math.max(44, Math.min(99, 96 - index * 6 + (post.id % 7))),
+    tags: [post.mood.toLowerCase().replace(/\s+/g, ""), "creator"],
+  }));
+  return [...mapped, ...fallbackPosts].sort((left, right) => right.promotionScore - left.promotionScore);
+}
+
 function timeAgo(value: string) {
   const date = new Date(value);
   const seconds = Math.round((date.getTime() - Date.now()) / 1000);
@@ -662,53 +1008,11 @@ function timeAgo(value: string) {
   return formatter.format(seconds, "second");
 }
 
-function timeUntil(value: string) {
-  const date = new Date(value);
-  const seconds = Math.max(0, Math.round((date.getTime() - Date.now()) / 1000));
-  if (seconds < 60) {
-    return "a moment";
-  }
-  if (seconds < 3600) {
-    return `${Math.round(seconds / 60)} minutes`;
-  }
-  if (seconds < 86400) {
-    return `${Math.round(seconds / 3600)} hours`;
-  }
-  return `${Math.round(seconds / 86400)} days`;
-}
-
-function homeViewCopy(view: HomeView, name: string) {
-  switch (view) {
-    case "live":
-      return "Tap a live cover to enter that creator's room.";
-    case "studio":
-      return `Your studio pulse and service state, ${name}.`;
-    case "channels":
-      return "Follow creator channels and jump into active communities.";
-    case "profile":
-      return "Your public profile, account state, and sign out control.";
-    default:
-      return `Welcome back, ${name}. Promoted posts rise here when other users push them up.`;
-  }
-}
-
-function promotionScoreFor(post: FeedPost, index: number) {
-  return Math.max(42, Math.min(99, 96 - index * 7 + (post.id % 11)));
-}
-
-function navIcon(view: HomeView) {
-  switch (view) {
-    case "live":
-      return "Live";
-    case "studio":
-      return "Studio";
-    case "channels":
-      return "Chan";
-    case "profile":
-      return "Me";
-    default:
-      return "Home";
-  }
+function elapsedTime(value: string) {
+  const minutes = Math.max(1, Math.round((Date.now() - new Date(value).getTime()) / 60000));
+  const hours = Math.floor(minutes / 60).toString().padStart(2, "0");
+  const mins = (minutes % 60).toString().padStart(2, "0");
+  return `${hours}:${mins}:30`;
 }
 
 function profileImageFor(seed: string) {
@@ -718,17 +1022,30 @@ function profileImageFor(seed: string) {
     "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=240&q=80",
     "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=240&q=80",
     "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=240&q=80",
+    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=240&q=80",
   ];
   return images[indexFor(seed, images.length)];
 }
 
 function postImageFor(seed: number) {
   const images = [
+    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1493246507139-91e8fad9978e?auto=format&fit=crop&w=1000&q=82",
     "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1000&q=82",
     "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1000&q=82",
     "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=1000&q=82",
+  ];
+  return images[Math.abs(seed) % images.length];
+}
+
+function streamImageFor(seed: number) {
+  const images = [
+    "https://images.unsplash.com/photo-1509967419530-da38b4704bc6?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1000&q=82",
+    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1000&q=82",
   ];
   return images[Math.abs(seed) % images.length];
 }
