@@ -1,4 +1,35 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import ReactEmoji from "react-emoji";
+import {
+  Avatar,
+  AvatarGroup,
+  Badge,
+  Button,
+  Chip,
+  Collapse,
+  Fade,
+  IconButton,
+  InputBase,
+  LinearProgress,
+  Paper,
+  Stack,
+} from "@mui/material";
+import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
+import AutoAwesomeRounded from "@mui/icons-material/AutoAwesomeRounded";
+import CommentRounded from "@mui/icons-material/CommentRounded";
+import EmojiEmotionsRounded from "@mui/icons-material/EmojiEmotionsRounded";
+import FavoriteRounded from "@mui/icons-material/FavoriteRounded";
+import ForumRounded from "@mui/icons-material/ForumRounded";
+import GroupsRounded from "@mui/icons-material/GroupsRounded";
+import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
+import NorthEastRounded from "@mui/icons-material/NorthEastRounded";
+import PersonAddAlt1Rounded from "@mui/icons-material/PersonAddAlt1Rounded";
+import PersonRemoveRounded from "@mui/icons-material/PersonRemoveRounded";
+import PlayCircleRounded from "@mui/icons-material/PlayCircleRounded";
+import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
+import SendRounded from "@mui/icons-material/SendRounded";
+import SettingsRounded from "@mui/icons-material/SettingsRounded";
+import VideocamRounded from "@mui/icons-material/VideocamRounded";
 import {
   clearStoredToken,
   createComment,
@@ -97,6 +128,7 @@ const themeOptions: Array<{
 ];
 
 const THEME_STORAGE_KEY = "creators-theme";
+const quickEmoji = [":sparkles:", ":fire:", ":heart:", ":raised_hands:", ":zap:"];
 
 const featureRows = [
   {
@@ -360,6 +392,8 @@ function HomeApp({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [feedError, setFeedError] = useState("");
+  const [followCounts, setFollowCounts] = useState<Record<string, number>>({});
+  const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
   const [liveIndex, setLiveIndex] = useState<LiveIndex | null>(null);
   const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
   const [loading, setLoading] = useState(true);
@@ -402,6 +436,31 @@ function HomeApp({
   function openStream(room: LiveRoom) {
     setSelectedLiveId(room.id);
     setActiveTab("streams");
+  }
+
+  function followKey(value: string) {
+    return value.trim().toLowerCase();
+  }
+
+  function isFollowing(value: string) {
+    return Boolean(followingMap[followKey(value)]);
+  }
+
+  function followersFor(value: string) {
+    const key = followKey(value);
+    return followCounts[key] ?? 1200 + indexFor(value, 8200);
+  }
+
+  function toggleFollow(value: string) {
+    const key = followKey(value);
+    setFollowingMap((current) => {
+      const next = !current[key];
+      setFollowCounts((counts) => ({
+        ...counts,
+        [key]: Math.max(1, (counts[key] ?? 1200 + indexFor(value, 8200)) + (next ? 1 : -1)),
+      }));
+      return { ...current, [key]: next };
+    });
   }
 
   async function loadPostComments(postId: number) {
@@ -466,10 +525,12 @@ function HomeApp({
             {feedError ? <p className="feed-error">{feedError}</p> : null}
             <HomeFeed
               comments={comments}
+              isFollowing={isFollowing}
               loading={loading}
               onAddComment={addPostComment}
               onLoadComments={loadPostComments}
               onOpenProfile={setSelectedProfilePost}
+              onToggleFollow={toggleFollow}
               posts={displayPosts}
             />
           </>
@@ -485,8 +546,11 @@ function HomeApp({
             onLoadComments={loadLiveComments}
             onOpenStream={openStream}
             onRate={updateLiveRating}
+            onToggleFollow={toggleFollow}
             ratingsByLiveId={ratingsByLiveId}
             selectedLive={selectedLive}
+            followersFor={followersFor}
+            isFollowing={isFollowing}
           />
         ) : null}
 
@@ -497,7 +561,9 @@ function HomeApp({
             onOpenProfile={() => changeTab("profiles")}
             onOpenThread={openThread}
             onSendMessage={sendMessage}
+            onToggleFollow={toggleFollow}
             selectedThreadId={selectedThreadId}
+            isFollowing={isFollowing}
           />
         ) : null}
 
@@ -513,6 +579,8 @@ function HomeApp({
             posts={displayPosts}
             profile={profile}
             user={profile?.user ?? user}
+            followersCount={followersFor(user.name)}
+            followingCount={Object.values(followingMap).filter(Boolean).length + 42}
           />
         ) : null}
 
@@ -592,17 +660,21 @@ function StoryHeader({ liveRooms, onOpenStream, user }: { liveRooms: LiveRoom[];
 
 function HomeFeed({
   comments,
+  isFollowing,
   loading,
   onAddComment,
   onLoadComments,
   onOpenProfile,
+  onToggleFollow,
   posts,
 }: {
   comments: Comment[];
+  isFollowing: (name: string) => boolean;
   loading: boolean;
   onAddComment: (postId: number, body: string) => Promise<void>;
   onLoadComments: (postId: number) => Promise<void>;
   onOpenProfile: (post: DisplayPost) => void;
+  onToggleFollow: (name: string) => void;
   posts: DisplayPost[];
 }) {
   if (loading) {
@@ -612,41 +684,126 @@ function HomeFeed({
   return (
     <section className="home-feed" aria-label="Home feed">
       {posts.map((post) => (
-        <FeedCard comments={comments.filter((comment) => comment.targetType === "post" && comment.targetId === post.id)} key={post.id} onAddComment={onAddComment} onLoadComments={onLoadComments} onOpenProfile={onOpenProfile} post={post} />
+        <FeedCard comments={comments.filter((comment) => comment.targetType === "post" && comment.targetId === post.id)} isFollowing={isFollowing(post.author.name)} key={post.id} onAddComment={onAddComment} onLoadComments={onLoadComments} onOpenProfile={onOpenProfile} onToggleFollow={onToggleFollow} post={post} />
       ))}
     </section>
   );
 }
 
+function EmojiText({ className, text }: { className?: string; text: string }) {
+  return <span className={className}>{ReactEmoji.emojify(text, { attributes: { width: "18px", height: "18px" } }) as ReactNode}</span>;
+}
+
+function FollowPill({ following, onClick }: { following: boolean; onClick: () => void }) {
+  return (
+    <Button
+      onClick={onClick}
+      size="small"
+      startIcon={following ? <PersonRemoveRounded /> : <PersonAddAlt1Rounded />}
+      sx={{
+        borderRadius: "999px",
+        px: 1.5,
+        py: 0.5,
+        fontWeight: 800,
+        color: "#fff",
+        background: following ? "rgba(255,255,255,0.12)" : "linear-gradient(135deg, var(--accent), var(--accent-2))",
+        border: following ? "1px solid rgba(255,255,255,0.22)" : "none",
+        backdropFilter: "blur(12px)",
+      }}
+      variant="contained"
+    >
+      {following ? "Following" : "Follow"}
+    </Button>
+  );
+}
+
+function EmojiComposer({
+  onSubmit,
+  placeholder,
+}: {
+  onSubmit: (value: string) => Promise<void> | void;
+  placeholder: string;
+}) {
+  const [value, setValue] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!value.trim()) {
+      return;
+    }
+    await onSubmit(value);
+    setValue("");
+  }
+
+  return (
+    <form className="mt-3 flex flex-col gap-2" onSubmit={(event) => void submit(event)}>
+      <Paper
+        elevation={0}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          px: 1.25,
+          py: 0.5,
+          borderRadius: "18px",
+          background: "color-mix(in srgb, var(--surface-2) 76%, transparent)",
+          border: "1px solid var(--line-soft)",
+        }}
+      >
+        <EmojiEmotionsRounded sx={{ color: "var(--accent)", fontSize: 20 }} />
+        <InputBase
+          placeholder={placeholder}
+          sx={{ color: "var(--text-1)", flex: 1, fontSize: 14 }}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <IconButton sx={{ color: "var(--accent)" }} type="submit">
+          <SendRounded fontSize="small" />
+        </IconButton>
+      </Paper>
+      <div className="flex flex-wrap gap-2">
+        {quickEmoji.map((emoji) => (
+          <Chip
+            key={emoji}
+            label={<EmojiText text={emoji} />}
+            onClick={() => setValue((current) => `${current}${current ? " " : ""}${emoji}`)}
+            size="small"
+            sx={{
+              color: "var(--text-2)",
+              background: "var(--chip-bg)",
+              border: "1px solid var(--line-soft)",
+              borderRadius: "999px",
+            }}
+            variant="outlined"
+          />
+        ))}
+      </div>
+    </form>
+  );
+}
+
 function FeedCard({
   comments,
+  isFollowing,
   onAddComment,
   onLoadComments,
   onOpenProfile,
+  onToggleFollow,
   post,
 }: {
   comments: Comment[];
+  isFollowing: boolean;
   onAddComment: (postId: number, body: string) => Promise<void>;
   onLoadComments: (postId: number) => Promise<void>;
   onOpenProfile: (post: DisplayPost) => void;
+  onToggleFollow: (name: string) => void;
   post: DisplayPost;
 }) {
-  const [commentText, setCommentText] = useState("");
   const [promoted, setPromoted] = useState(false);
   const [promoteCount, setPromoteCount] = useState(post.likes);
   const [open, setOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
-
-  async function submitComment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!commentText.trim()) {
-      return;
-    }
-    await onAddComment(post.id, commentText);
-    setCommentText("");
-    setOpen(true);
-  }
 
   function promotePost() {
     setPromoted((current) => {
@@ -700,7 +857,7 @@ function FeedCard({
           </div>
         ))}
 
-        <div className="feed-image-shade" />
+      <div className="feed-image-shade" />
         <header className="feed-card-header">
           <button className="feed-profile-trigger" type="button" onClick={() => onOpenProfile(post)} aria-label={`Open ${post.author.name} profile`}>
             <img alt="" src={profileImageFor(post.author.name)} />
@@ -709,7 +866,7 @@ function FeedCard({
               <small>{timeAgo(post.createdAt)}</small>
             </span>
           </button>
-          <button type="button">FOLLOW</button>
+          <FollowPill following={isFollowing} onClick={() => onToggleFollow(post.author.name)} />
         </header>
 
         <div className="feed-overlay-copy">
@@ -752,15 +909,34 @@ function FeedCard({
       ) : null}
 
       {open ? (
-        <section className="comment-panel">
-          {comments.map((comment) => (
-            <p key={comment.id}><strong>{comment.author.name}</strong> {comment.body}</p>
-          ))}
-          <form onSubmit={(event) => void submitComment(event)}>
-            <input value={commentText} placeholder="Write a comment" onChange={(event) => setCommentText(event.target.value)} />
-            <button type="submit">Send</button>
-          </form>
-        </section>
+        <Collapse in={open}>
+          <section className="comment-panel">
+            <div className="flex flex-col gap-3">
+              {comments.length ? comments.map((comment) => (
+                <Paper
+                  elevation={0}
+                  key={comment.id}
+                  sx={{
+                    p: 1.25,
+                    borderRadius: "16px",
+                    background: "color-mix(in srgb, var(--surface-2) 58%, transparent)",
+                    border: "1px solid var(--line-soft)",
+                  }}
+                >
+                  <p className="m-0 text-sm font-semibold text-[color:var(--text-1)]">{comment.author.name}</p>
+                  <EmojiText className="mt-1 block text-sm text-[color:var(--text-2)]" text={comment.body} />
+                </Paper>
+              )) : <p className="text-sm text-[color:var(--text-3)]">No comments yet. Start the conversation.</p>}
+            </div>
+            <EmojiComposer
+              placeholder="Drop a thought with emoji"
+              onSubmit={async (value) => {
+                await onAddComment(post.id, value);
+                setOpen(true);
+              }}
+            />
+          </section>
+        </Collapse>
       ) : null}
     </article>
   );
@@ -768,6 +944,8 @@ function FeedCard({
 
 function StreamScreen({
   comments,
+  followersFor,
+  isFollowing,
   liveIndex,
   liveRooms,
   onAddComment,
@@ -776,9 +954,12 @@ function StreamScreen({
   onLoadComments,
   onOpenStream,
   onRate,
+  onToggleFollow,
   ratingsByLiveId,
 }: {
   comments: Comment[];
+  followersFor: (name: string) => number;
+  isFollowing: (name: string) => boolean;
   liveIndex: LiveIndex | null;
   liveRooms: LiveRoom[];
   onAddComment: (liveId: number, body: string) => Promise<void>;
@@ -787,10 +968,10 @@ function StreamScreen({
   onLoadComments: (liveId: number) => Promise<void>;
   onOpenStream: (room: LiveRoom) => void;
   onRate: (liveRoomId: number, score: number) => Promise<void>;
+  onToggleFollow: (name: string) => void;
   ratingsByLiveId: Map<number, LiveRating>;
 }) {
   const live = selectedLive ?? liveRooms[0];
-  const [commentText, setCommentText] = useState("");
 
   useEffect(() => {
     if (live) {
@@ -807,57 +988,135 @@ function StreamScreen({
     );
   }
 
-  async function submitComment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!live || !commentText.trim()) {
-      return;
-    }
-    await onAddComment(live.id, commentText);
-    setCommentText("");
-  }
-
   const rating = ratingsByLiveId.get(live.id);
+  const liveComments = comments.filter((comment) => comment.targetType === "live" && comment.targetId === live.id);
+  const following = isFollowing(live.host);
 
   return (
     <section className="stream-screen" style={{ backgroundImage: `url("${streamImageFor(live.id)}")` }}>
-      <button className="stream-close" type="button" onClick={onClose}>x</button>
-      <header className="stream-host">
-        <img alt="" src={profileImageFor(live.host)} />
-        <div>
-          <strong>{live.host}</strong>
-          <span>{elapsedTime(live.startsAt)}</span>
+      <div className="relative z-[2] grid min-h-screen grid-rows-[auto,1fr] gap-4 px-1 pb-28 pt-3 md:px-4">
+        <div className="flex items-center justify-between gap-3">
+          <IconButton className="!bg-white/80 !text-slate-900" onClick={onClose}>
+            <ArrowBackRounded />
+          </IconButton>
+          <div className="flex items-center gap-2">
+            <Chip icon={<AutoAwesomeRounded />} label="Live now" sx={{ color: "#fff", background: "rgba(8,12,20,0.45)", border: "1px solid rgba(255,255,255,0.14)" }} />
+            <IconButton className="!bg-black/30 !text-white">
+              <MoreHorizRounded />
+            </IconButton>
+          </div>
         </div>
-      </header>
 
-      <aside className="stream-switcher" aria-label="Other streams">
-        {(liveIndex?.following ?? liveRooms).map((room) => (
-          <button key={room.id} type="button" onClick={() => onOpenStream(room)}>
-            <img alt="" src={profileImageFor(room.host)} />
-          </button>
-        ))}
-      </aside>
+        <div className="grid items-end gap-4 lg:grid-cols-[minmax(0,1fr),330px]">
+          <Fade in timeout={450}>
+            <div className="rounded-[32px] border border-white/10 bg-black/25 p-4 shadow-2xl backdrop-blur-md md:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Badge color="error" overlap="circular" variant="dot">
+                    <Avatar src={profileImageFor(live.host)} sx={{ width: 54, height: 54 }} />
+                  </Badge>
+                  <div>
+                    <h1 className="text-xl font-black text-white md:text-2xl">{live.host}</h1>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/75">
+                      <span className="inline-flex items-center gap-1"><VideocamRounded sx={{ fontSize: 16 }} /> {live.title}</span>
+                      <span className="inline-flex items-center gap-1"><ScheduleRounded sx={{ fontSize: 16 }} /> {elapsedTime(live.startsAt)}</span>
+                    </div>
+                  </div>
+                </div>
+                <FollowPill following={following} onClick={() => onToggleFollow(live.host)} />
+              </div>
 
-      <div className="stream-share">Share with friends</div>
-      <div className="stream-comments">
-        <p><strong>Rating</strong> {rating ? `${rating.average.toFixed(1)} from ${rating.count}` : "No ratings yet"}</p>
-        {comments.filter((comment) => comment.targetType === "live" && comment.targetId === live.id).slice(-3).map((comment) => (
-          <p key={comment.id}><strong>{comment.author.name}</strong> {comment.body}</p>
-        ))}
-        <form onSubmit={(event) => void submitComment(event)}>
-          <input value={commentText} placeholder="Comment live" onChange={(event) => setCommentText(event.target.value)} />
-          <button type="submit">Send</button>
-        </form>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <Paper elevation={0} sx={{ p: 1.5, borderRadius: "20px", background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)" }}>
+                  <p className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">Followers</p>
+                  <strong className="mt-1 block text-lg">{compactNumber(followersFor(live.host))}</strong>
+                </Paper>
+                <Paper elevation={0} sx={{ p: 1.5, borderRadius: "20px", background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)" }}>
+                  <p className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">Average rate</p>
+                  <strong className="mt-1 block text-lg">{rating ? rating.average.toFixed(1) : "New"}</strong>
+                </Paper>
+                <Paper elevation={0} sx={{ p: 1.5, borderRadius: "20px", background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)" }}>
+                  <p className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">Votes</p>
+                  <strong className="mt-1 block text-lg">{rating?.count ?? 0}</strong>
+                </Paper>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <Chip
+                    clickable
+                    color={rating?.userScore === score ? "primary" : "default"}
+                    key={score}
+                    label={`${score} star`}
+                    onClick={() => void onRate(live.id, score)}
+                    sx={{
+                      borderRadius: "999px",
+                      color: "#fff",
+                      background: rating?.userScore === score ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "rgba(255,255,255,0.08)",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="m-0 text-sm font-bold text-white">Live comments</p>
+                  <span className="text-xs font-semibold text-white/60">{liveComments.length} messages</span>
+                </div>
+                <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                  {liveComments.slice(-4).map((comment) => (
+                    <Paper key={comment.id} elevation={0} sx={{ p: 1.25, borderRadius: "18px", background: "rgba(9,13,21,0.52)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }}>
+                      <p className="m-0 text-sm font-semibold">{comment.author.name}</p>
+                      <EmojiText className="mt-1 block text-sm text-white/74" text={comment.body} />
+                    </Paper>
+                  ))}
+                </div>
+                <EmojiComposer
+                  placeholder="React to the live with emoji and comments"
+                  onSubmit={(value) => onAddComment(live.id, value)}
+                />
+              </div>
+            </div>
+          </Fade>
+
+          <div className="grid gap-3">
+            <Paper elevation={0} sx={{ p: 2, borderRadius: "28px", background: "rgba(8,12,20,0.5)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(16px)" }}>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="m-0 text-sm font-black uppercase tracking-[0.18em] text-white/60">Up next</p>
+                <PlayCircleRounded sx={{ color: "var(--accent)" }} />
+              </div>
+              <div className="space-y-2">
+                {(liveIndex?.following ?? liveRooms).slice(0, 4).map((room) => (
+                  <button className="flex w-full items-center gap-3 rounded-2xl bg-white/5 px-3 py-2 text-left text-white transition hover:bg-white/10" key={room.id} type="button" onClick={() => onOpenStream(room)}>
+                    <Avatar src={profileImageFor(room.host)} />
+                    <span className="min-w-0 flex-1">
+                      <strong className="block truncate text-sm">{room.host}</strong>
+                      <small className="block truncate text-xs text-white/60">{room.title}</small>
+                    </span>
+                    <NorthEastRounded sx={{ fontSize: 18 }} />
+                  </button>
+                ))}
+              </div>
+            </Paper>
+
+            <Paper elevation={0} sx={{ p: 2, borderRadius: "28px", background: "rgba(8,12,20,0.5)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(16px)" }}>
+              <p className="mb-3 text-sm font-black uppercase tracking-[0.18em] text-white/60">Schedule</p>
+              <Stack spacing={1.25}>
+                {(liveIndex?.scheduled ?? []).slice(0, 3).map((room) => (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2" key={room.id}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-semibold">{room.title}</span>
+                      <ScheduleRounded sx={{ fontSize: 16, color: "var(--accent)" }} />
+                    </div>
+                    <small className="text-white/60">{timeAgo(room.startsAt)}</small>
+                  </div>
+                ))}
+              </Stack>
+            </Paper>
+          </div>
+        </div>
       </div>
-      <div className="stream-rate" aria-label="Rate stream">
-        {[1, 2, 3, 4, 5].map((score) => (
-          <button className={rating?.userScore === score ? "active" : ""} key={score} type="button" onClick={() => void onRate(live.id, score)}>{score}</button>
-        ))}
-      </div>
-      <section className="stream-lists">
-        <StreamList title="Live" rooms={liveIndex?.live ?? liveRooms} onOpenStream={onOpenStream} />
-        <StreamList title="Events" rooms={liveIndex?.scheduled ?? []} onOpenStream={onOpenStream} />
-        <StreamList title="Previous" rooms={liveIndex?.previous ?? []} onOpenStream={onOpenStream} />
-      </section>
       <div className="heart-float" aria-hidden="true">
         <span />
         <span />
@@ -885,69 +1144,120 @@ function StreamList({ title, rooms, onOpenStream }: { title: string; rooms: Live
 
 function SearchMessages({
   contacts,
+  isFollowing,
   messages,
   onOpenProfile,
   onOpenThread,
   onSendMessage,
+  onToggleFollow,
   selectedThreadId,
 }: {
   contacts: ChatContact[];
+  isFollowing: (name: string) => boolean;
   messages: ChatMessage[];
   onOpenProfile: () => void;
   onOpenThread: (contactId: string) => Promise<void>;
   onSendMessage: (body: string) => Promise<void>;
+  onToggleFollow: (name: string) => void;
   selectedThreadId: string;
 }) {
-  const [messageText, setMessageText] = useState("");
+  const [search, setSearch] = useState("");
   const activeContact = contacts.find((contact) => contact.id === selectedThreadId);
-
-  async function submitMessage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!messageText.trim()) {
-      return;
-    }
-    await onSendMessage(messageText);
-    setMessageText("");
-  }
+  const visibleContacts = contacts.filter((contact) => {
+    const query = search.trim().toLowerCase();
+    return !query || contact.name.toLowerCase().includes(query) || (contact.subtitle ?? "").toLowerCase().includes(query);
+  });
 
   return (
     <section className="search-panel">
-      <button className="panel-close" type="button">x</button>
-      <h1>Messages</h1>
-      <label className="search-box">
-        <span>Search</span>
-        <input placeholder="Search" />
-      </label>
-      <div className="recent-head">
-        <h2>Connected people</h2>
-        <button type="button" onClick={onOpenProfile}>Profile</button>
+      <div className="mx-auto grid min-h-[calc(100vh-80px)] max-w-6xl gap-4 lg:grid-cols-[340px,minmax(0,1fr)]">
+        <Fade in timeout={350}>
+          <Paper elevation={0} sx={{ p: 2, borderRadius: "28px", background: "var(--panel-elevated)", border: "1px solid var(--line-soft)", color: "var(--text-1)" }}>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="m-0 text-xs font-black uppercase tracking-[0.2em] text-[color:var(--text-3)]">Inbox</p>
+                <h1 className="mt-1 text-3xl font-black">Messages</h1>
+              </div>
+              <IconButton className="!text-[color:var(--accent)]" onClick={onOpenProfile}>
+                <SettingsRounded />
+              </IconButton>
+            </div>
+
+            <Paper elevation={0} sx={{ px: 1.5, py: 0.75, display: "flex", alignItems: "center", gap: 1, borderRadius: "18px", background: "var(--surface-3)", border: "1px solid var(--line-soft)" }}>
+              <ForumRounded sx={{ color: "var(--accent)", fontSize: 18 }} />
+              <InputBase placeholder="Search conversations" sx={{ color: "var(--text-1)", flex: 1 }} value={search} onChange={(event) => setSearch(event.target.value)} />
+            </Paper>
+
+            <div className="mt-4 space-y-3">
+              {visibleContacts.map((contact) => (
+                <article
+                  className={`rounded-[24px] border p-3 transition ${contact.id === selectedThreadId ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)]" : "border-[color:var(--line-soft)] bg-[color:var(--surface-3)] hover:bg-[color:var(--chip-bg)]"}`}
+                  key={contact.id}
+                >
+                  <div className="flex items-center gap-3">
+                    <button className="flex min-w-0 flex-1 items-center gap-3 text-left" type="button" onClick={() => void onOpenThread(contact.id)}>
+                      <Avatar src={profileImageFor(contact.name)} sx={{ width: 50, height: 50 }} />
+                      <span className="min-w-0 flex-1">
+                        <strong className="block truncate text-sm">{contact.name}</strong>
+                        <small className="block truncate text-xs text-[color:var(--text-3)]">{contact.lastBody || contact.subtitle}</small>
+                      </span>
+                    </button>
+                    <FollowPill following={isFollowing(contact.name)} onClick={() => onToggleFollow(contact.name)} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          </Paper>
+        </Fade>
+
+        <Fade in timeout={500}>
+          <Paper elevation={0} sx={{ p: 2, borderRadius: "32px", background: "linear-gradient(180deg, color-mix(in srgb, var(--surface-1) 82%, transparent), color-mix(in srgb, var(--surface-3) 92%, transparent))", border: "1px solid var(--line-soft)", color: "var(--text-1)" }}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Avatar src={profileImageFor(activeContact?.name ?? "chat")} sx={{ width: 58, height: 58 }} />
+                <div>
+                  <h2 className="m-0 text-xl font-black">{activeContact?.name ?? "Chat"}</h2>
+                  <p className="m-0 text-sm text-[color:var(--text-3)]">{activeContact?.subtitle ?? "Direct conversation"}</p>
+                </div>
+              </div>
+              <AvatarGroup max={4}>
+                {contacts.slice(0, 4).map((contact) => (
+                  <Avatar key={contact.id} src={profileImageFor(contact.name)} />
+                ))}
+              </AvatarGroup>
+            </div>
+
+            <div className="mt-4 rounded-[28px] border border-[color:var(--line-soft)] bg-black/10 p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[color:var(--text-3)]">
+                <CommentRounded sx={{ fontSize: 18 }} />
+                Smooth, WhatsApp-like thread flow
+              </div>
+              <div className="chat-bubbles min-h-[320px]">
+                {messages.map((message) => (
+                  <Paper
+                    className={message.own ? "own" : ""}
+                    elevation={0}
+                    key={message.id}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: message.own ? "22px 22px 8px 22px" : "22px 22px 22px 8px",
+                      background: message.own ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "var(--surface-2)",
+                      color: message.own ? "#fff" : "var(--text-1)",
+                    }}
+                  >
+                    <EmojiText className="text-sm" text={message.body} />
+                  </Paper>
+                ))}
+              </div>
+
+              <EmojiComposer
+                placeholder={`Message ${activeContact?.name ?? "your contact"}`}
+                onSubmit={onSendMessage}
+              />
+            </div>
+          </Paper>
+        </Fade>
       </div>
-      <div className="people-list">
-        {contacts.map((contact) => (
-          <article className={contact.id === selectedThreadId ? "active" : ""} key={contact.id}>
-            <button className="person-button" type="button" onClick={() => void onOpenThread(contact.id)}>
-              <img alt="" src={profileImageFor(contact.name)} />
-              <span>
-                <strong>{contact.name}</strong>
-                <small>{contact.lastBody || contact.subtitle}</small>
-              </span>
-            </button>
-            <button className="follow-pill" type="button">FOLLOW</button>
-          </article>
-        ))}
-      </div>
-      <section className="chat-thread">
-        <h2>{activeContact?.name ?? "Chat"}</h2>
-        <div className="chat-bubbles">
-          {messages.map((message) => (
-            <p className={message.own ? "own" : ""} key={message.id}>{message.body}</p>
-          ))}
-        </div>
-        <form onSubmit={(event) => void submitMessage(event)}>
-          <input value={messageText} placeholder="Message" onChange={(event) => setMessageText(event.target.value)} />
-          <button type="submit">Send</button>
-        </form>
-      </section>
     </section>
   );
 }
@@ -996,6 +1306,8 @@ function StudioPanel({ posts, serviceLabel }: { posts: DisplayPost[]; serviceLab
 }
 
 function ProfilePanel({
+  followersCount,
+  followingCount,
   health,
   onLogout,
   onOpenSettings,
@@ -1003,6 +1315,8 @@ function ProfilePanel({
   profile,
   user,
 }: {
+  followersCount: number;
+  followingCount: number;
   health: HealthResponse | null;
   onLogout: () => void;
   onOpenSettings: () => void;
@@ -1011,45 +1325,99 @@ function ProfilePanel({
   user: AuthUser;
 }) {
   const profilePosts = posts.slice(0, 4);
+  const streak = 7 + (posts.length % 5);
 
   return (
     <section className="profile-panel">
-      <header className="profile-top-actions">
-        <span>Profile</span>
-        <button className="round-icon settings" type="button" onClick={onOpenSettings} aria-label="Open profile settings">
-          Settings
-        </button>
-      </header>
+      <Fade in timeout={450}>
+        <div className="mx-auto grid min-h-[calc(100vh-96px)] max-w-6xl gap-4 lg:grid-cols-[minmax(0,1.35fr),360px]">
+          <div className="space-y-4">
+            <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, borderRadius: "32px", background: "linear-gradient(180deg, color-mix(in srgb, var(--surface-1) 82%, transparent), color-mix(in srgb, var(--surface-3) 92%, transparent))", color: "var(--text-1)", border: "1px solid var(--line-soft)" }}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-4">
+                  <Badge overlap="circular" badgeContent={<AutoAwesomeRounded sx={{ fontSize: 14, color: "#fff" }} />} color="primary">
+                    <Avatar src={profileImageFor(user.name)} sx={{ width: 96, height: 96, border: "3px solid color-mix(in srgb, var(--accent) 45%, transparent)" }} />
+                  </Badge>
+                  <div>
+                    <h1 className="text-2xl font-black md:text-3xl">{user.name}</h1>
+                    <p className="mt-1 text-sm font-semibold text-[color:var(--text-3)]">{profile?.headline || "Digital creator"}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Chip icon={<GroupsRounded />} label={`${compactNumber(followersCount)} followers`} sx={{ color: "var(--text-1)", background: "var(--chip-bg)", border: "1px solid var(--line-soft)" }} />
+                      <Chip icon={<FavoriteRounded />} label={`${streak} day streak`} sx={{ color: "var(--text-1)", background: "var(--chip-bg)", border: "1px solid var(--line-soft)" }} />
+                    </div>
+                  </div>
+                </div>
+                <IconButton className="!text-[color:var(--accent)]" onClick={onOpenSettings}>
+                  <SettingsRounded />
+                </IconButton>
+              </div>
 
-      <div className="own-profile-hero">
-        <div className="own-profile-avatar">
-          <img alt="" src={profileImageFor(user.name)} />
+              <EmojiText className="mt-5 block max-w-3xl text-sm leading-7 text-[color:var(--text-2)]" text={profile?.bio || "Shape your creator identity, publish drops, and keep your audience close. :sparkles:"} />
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <Paper elevation={0} sx={{ p: 1.75, borderRadius: "22px", background: "var(--surface-2)", border: "1px solid var(--line-soft)" }}>
+                  <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Posts</p>
+                  <strong className="mt-2 block text-xl">{posts.length}</strong>
+                </Paper>
+                <Paper elevation={0} sx={{ p: 1.75, borderRadius: "22px", background: "var(--surface-2)", border: "1px solid var(--line-soft)" }}>
+                  <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Following</p>
+                  <strong className="mt-2 block text-xl">{followingCount}</strong>
+                </Paper>
+                <Paper elevation={0} sx={{ p: 1.75, borderRadius: "22px", background: "var(--surface-2)", border: "1px solid var(--line-soft)" }}>
+                  <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Service</p>
+                  <strong className="mt-2 block text-xl">{health?.status === "ok" ? "Live" : "Syncing"}</strong>
+                </Paper>
+              </div>
+            </Paper>
+
+            <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, borderRadius: "32px", background: "var(--panel-elevated)", color: "var(--text-1)", border: "1px solid var(--line-soft)" }}>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Portfolio</p>
+                  <h2 className="mt-1 text-xl font-black">Photos, videos, and promoted drops</h2>
+                </div>
+                <Button onClick={onOpenSettings} sx={{ borderRadius: "999px", color: "#fff", px: 2, background: "linear-gradient(135deg, var(--accent), var(--accent-2))" }} variant="contained">
+                  Edit profile
+                </Button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {profilePosts.map((post, index) => (
+                  <div className={`group relative overflow-hidden rounded-[26px] border border-[color:var(--line-soft)] ${index === 0 ? "sm:col-span-2" : ""}`} key={post.id}>
+                    <img alt="" className={`h-full w-full object-cover transition duration-500 group-hover:scale-105 ${index === 0 ? "aspect-[1.8/1]" : "aspect-square"}`} src={post.gallery[0]} />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white">
+                      <p className="m-0 text-sm font-black">{post.mood}</p>
+                      <p className="m-0 mt-1 text-xs text-white/75">{post.promotionScore}% trend score</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Paper>
+          </div>
+
+          <div className="space-y-4">
+            <Paper elevation={0} sx={{ p: 2.5, borderRadius: "30px", background: "var(--panel-elevated)", color: "var(--text-1)", border: "1px solid var(--line-soft)" }}>
+              <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Creator pulse</p>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-sm font-semibold">
+                    <span>Audience warmth</span>
+                    <span>{Math.min(96, 74 + posts.length)}%</span>
+                  </div>
+                  <LinearProgress sx={{ height: 10, borderRadius: "999px", background: "rgba(255,255,255,0.08)", "& .MuiLinearProgress-bar": { borderRadius: "999px", background: "linear-gradient(135deg, var(--accent), var(--accent-2))" } }} value={Math.min(96, 74 + posts.length)} variant="determinate" />
+                </div>
+                <div className="rounded-[24px] border border-[color:var(--line-soft)] bg-[color:var(--surface-3)] p-4">
+                  <p className="m-0 text-sm font-bold">Profile flow</p>
+                  <p className="m-0 mt-1 text-sm text-[color:var(--text-3)]">Responsive cards, smoother transitions, and stronger hierarchy now anchor the profile experience.</p>
+                </div>
+              </div>
+            </Paper>
+
+            <Button className="!rounded-[18px]" fullWidth onClick={onLogout} sx={{ minHeight: 52, color: "var(--accent)", background: "var(--chip-bg)", border: "1px solid var(--line-soft)" }}>
+              Sign out
+            </Button>
+          </div>
         </div>
-        <h1>{user.name}</h1>
-        <p>{profile?.headline || "Digital creator"}</p>
-        <button className="mini-follow" type="button" onClick={onOpenSettings}>
-          Edit profile
-        </button>
-      </div>
-
-      <div className="profile-stats">
-        <span><strong>{posts.length}</strong> Posts</span>
-        <span><strong>{health?.status === "ok" ? "Live" : "Sync"}</strong> API</span>
-        <span><strong>{user.provider}</strong> Auth</span>
-      </div>
-
-      <p className="profile-summary">{profile?.bio || "Shape your creator identity, publish drops, and keep your audience close."}</p>
-
-      <div className="profile-section-head">
-        <h2>Photos & Videos</h2>
-        <button type="button">View all</button>
-      </div>
-      <div className="profile-mini-gallery">
-        {profilePosts.map((post) => (
-          <img alt="" key={post.id} src={post.gallery[0]} />
-        ))}
-      </div>
-      <button className="logout-link" type="button" onClick={onLogout}>Sign out</button>
+      </Fade>
     </section>
   );
 }
@@ -1470,7 +1838,3 @@ function indexFor(value: string, length: number) {
 function isThemeName(value: string | null): value is ThemeName {
   return value === "default" || value === "dark" || value === "beautiful" || value === "blueish" || value === "greenish" || value === "whiteish";
 }
-
-
-
-
