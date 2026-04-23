@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   clearStoredToken,
   createComment,
+  createPost,
   fetchCurrentUser,
   fetchChatContacts,
   fetchChatMessages,
@@ -31,7 +32,9 @@ import {
 } from "./api";
 
 type AuthMode = "login" | "register";
-type HomeTab = "home" | "streams" | "messages" | "notifications" | "profiles";
+type HomeTab = "home" | "streams" | "messages" | "studio" | "profiles";
+type ProfileView = "profile" | "settings";
+type ThemeName = "default" | "dark" | "beautiful" | "blueish" | "greenish" | "whiteish";
 
 type DisplayPost = FeedPost & {
   comments: number;
@@ -42,12 +45,58 @@ type DisplayPost = FeedPost & {
 };
 
 const bottomTabs: Array<{ id: HomeTab; label: string; icon: string }> = [
-  { id: "home", label: "Home", icon: "Home" },
-  { id: "streams", label: "Streams", icon: "Live" },
-  { id: "messages", label: "Messages", icon: "Msg" },
-  { id: "notifications", label: "Notifications", icon: "Bell" },
-  { id: "profiles", label: "Profiles", icon: "Me" },
+  { id: "home", label: "Home", icon: "home" },
+  { id: "streams", label: "Live", icon: "streams" },
+  { id: "messages", label: "Chat", icon: "messages" },
+  { id: "studio", label: "Studio", icon: "studio" },
+  { id: "profiles", label: "Me", icon: "profiles" },
 ];
+
+const themeOptions: Array<{
+  id: ThemeName;
+  label: string;
+  caption: string;
+  swatches: [string, string, string];
+}> = [
+  {
+    id: "default",
+    label: "Default",
+    caption: "Night sky blue",
+    swatches: ["#79a7ff", "#1a2951", "#090f1d"],
+  },
+  {
+    id: "dark",
+    label: "Dark",
+    caption: "Classic dark mood",
+    swatches: ["#ff5b7e", "#1b2230", "#0d111a"],
+  },
+  {
+    id: "beautiful",
+    label: "Beautiful",
+    caption: "Neon dusk glow",
+    swatches: ["#ff8e68", "#ff4d86", "#2d234f"],
+  },
+  {
+    id: "blueish",
+    label: "Blueish",
+    caption: "Cool electric blue",
+    swatches: ["#60c7ff", "#3467ff", "#102347"],
+  },
+  {
+    id: "greenish",
+    label: "Greenish",
+    caption: "Emerald aurora",
+    swatches: ["#65f2c4", "#1fb28f", "#0f2630"],
+  },
+  {
+    id: "whiteish",
+    label: "Whiteish",
+    caption: "Smoke white",
+    swatches: ["#ffffff", "#e5e7eb", "#cdd3dc"],
+  },
+];
+
+const THEME_STORAGE_KEY = "creators-theme";
 
 const featureRows = [
   {
@@ -109,6 +158,13 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [notice, setNotice] = useState("");
   const [sessionLoading, setSessionLoading] = useState(true);
+  const [theme, setTheme] = useState<ThemeName>(() => {
+    if (typeof window === "undefined") {
+      return "default";
+    }
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return isThemeName(stored) ? stored : "default";
+  });
 
   async function refreshHealth() {
     try {
@@ -150,6 +206,11 @@ export default function App() {
     void refreshSession();
   }, []);
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
   async function handleLogout() {
     await logoutAccount();
     setUser(null);
@@ -168,7 +229,9 @@ export default function App() {
       <HomeApp
         health={health}
         notice={notice}
+        onThemeChange={setTheme}
         serviceLabel={serviceLabel}
+        theme={theme}
         user={user}
         onDismissNotice={() => setNotice("")}
         onLogout={() => void handleLogout()}
@@ -276,14 +339,18 @@ export default function App() {
 function HomeApp({
   health,
   notice,
+  onThemeChange,
   serviceLabel,
+  theme,
   user,
   onDismissNotice,
   onLogout,
 }: {
   health: HealthResponse | null;
   notice: string;
+  onThemeChange: (theme: ThemeName) => void;
   serviceLabel: string;
+  theme: ThemeName;
   user: AuthUser;
   onDismissNotice: () => void;
   onLogout: () => void;
@@ -298,6 +365,8 @@ function HomeApp({
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [profileView, setProfileView] = useState<ProfileView>("profile");
+  const [selectedProfilePost, setSelectedProfilePost] = useState<DisplayPost | null>(null);
   const [selectedLiveId, setSelectedLiveId] = useState<number | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState("alejandro-hicks");
 
@@ -379,10 +448,19 @@ function HomeApp({
     setProfile(await updateProfile(input));
   }
 
+  function changeTab(tab: HomeTab) {
+    if (tab === "profiles") {
+      setProfileView("profile");
+    }
+    setActiveTab(tab);
+  }
+
   return (
     <main className="social-shell">
       <section className="phone-frame">
-        {activeTab === "home" ? (
+        {selectedProfilePost ? (
+          <PublicProfileScreen post={selectedProfilePost} onBack={() => setSelectedProfilePost(null)} />
+        ) : activeTab === "home" ? (
           <>
             <StoryHeader liveRooms={liveRooms} onOpenStream={openStream} user={user} />
             {feedError ? <p className="feed-error">{feedError}</p> : null}
@@ -391,6 +469,7 @@ function HomeApp({
               loading={loading}
               onAddComment={addPostComment}
               onLoadComments={loadPostComments}
+              onOpenProfile={setSelectedProfilePost}
               posts={displayPosts}
             />
           </>
@@ -415,22 +494,42 @@ function HomeApp({
           <SearchMessages
             contacts={chatContacts}
             messages={chatMessages}
-            onOpenProfile={() => setActiveTab("profiles")}
+            onOpenProfile={() => changeTab("profiles")}
             onOpenThread={openThread}
             onSendMessage={sendMessage}
             selectedThreadId={selectedThreadId}
           />
         ) : null}
 
-        {activeTab === "notifications" ? (
-          <NotificationsPanel posts={displayPosts} serviceLabel={serviceLabel} />
+        {activeTab === "studio" ? (
+          <StudioPanel posts={displayPosts} serviceLabel={serviceLabel} />
         ) : null}
 
-        {activeTab === "profiles" ? (
-          <ProfilePanel health={health} onLogout={onLogout} onSaveProfile={saveProfile} posts={displayPosts} profile={profile} user={profile?.user ?? user} />
+        {activeTab === "profiles" && profileView === "profile" ? (
+          <ProfilePanel
+            health={health}
+            onLogout={onLogout}
+            onOpenSettings={() => setProfileView("settings")}
+            posts={displayPosts}
+            profile={profile}
+            user={profile?.user ?? user}
+          />
         ) : null}
 
-        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+        {activeTab === "profiles" && profileView === "settings" ? (
+          <ProfileSettingsPanel
+            onBack={() => setProfileView("profile")}
+            onLogout={onLogout}
+            onSaveProfile={saveProfile}
+            profile={profile}
+            theme={theme}
+            themes={themeOptions}
+            onThemeChange={onThemeChange}
+            user={profile?.user ?? user}
+          />
+        ) : null}
+
+        {selectedProfilePost ? null : <BottomNav activeTab={activeTab} onTabChange={changeTab} />}
       </section>
 
       {notice ? (
@@ -447,23 +546,46 @@ function HomeApp({
 
 function StoryHeader({ liveRooms, onOpenStream, user }: { liveRooms: LiveRoom[]; onOpenStream: (room: LiveRoom) => void; user: AuthUser }) {
   return (
-    <header className="story-header" aria-label="Live stories">
-      <button className="send-bubble" type="button" aria-label="Create">
-        <span>Go</span>
-      </button>
-      {liveRooms.map((room, index) => (
-        <button className="story-avatar" key={room.id} type="button" onClick={() => onOpenStream(room)}>
-          <span className="story-photo">
-            <img alt={`${room.host} profile`} src={profileImageFor(room.host)} />
-          </span>
-          {index === 0 ? <strong>LIVE</strong> : null}
+    <header className="home-highlight" aria-label="Home highlight">
+      <div className="highlight-topbar">
+        <a className="highlight-brand" href="/" aria-label="Creators home">
+          <span className="highlight-logo">C</span>
+          <strong>Creators</strong>
+        </a>
+        <div className="highlight-actions">
+          <button type="button" aria-label="Search"><span className="highlight-icon search" /></button>
+          <button type="button" aria-label="Notifications"><span className="highlight-icon bell" /><i>2</i></button>
+          <button type="button" aria-label="Menu"><span className="highlight-icon menu" /></button>
+        </div>
+      </div>
+
+      <div className="story-header" aria-label="Live streaming channels and users">
+        <button className="send-bubble" type="button" aria-label="Create">
+          <span>+</span>
+          <small>Add story</small>
         </button>
-      ))}
-      <button className="story-avatar" type="button">
-        <span className="story-photo">
-          <img alt={`${user.name} profile`} src={profileImageFor(user.name)} />
-        </span>
-      </button>
+        {liveRooms.map((room, index) => (
+          <button className="story-avatar" key={room.id} type="button" onClick={() => onOpenStream(room)}>
+            <span className="story-photo">
+              <img alt={`${room.host} profile`} src={profileImageFor(room.host)} />
+            </span>
+            {index === 0 ? <strong>LIVE</strong> : null}
+            <small>{firstName(room.host)}</small>
+          </button>
+        ))}
+        <button className="story-avatar" type="button">
+          <span className="story-photo">
+            <img alt={`${user.name} profile`} src={profileImageFor(user.name)} />
+          </span>
+          <small>{firstName(user.name)}</small>
+        </button>
+      </div>
+
+      <nav className="feed-filter" aria-label="Feed visibility filters">
+        <button type="button">Local</button>
+        <button type="button">Global</button>
+        <button className="active" type="button">Trend</button>
+      </nav>
     </header>
   );
 }
@@ -473,12 +595,14 @@ function HomeFeed({
   loading,
   onAddComment,
   onLoadComments,
+  onOpenProfile,
   posts,
 }: {
   comments: Comment[];
   loading: boolean;
   onAddComment: (postId: number, body: string) => Promise<void>;
   onLoadComments: (postId: number) => Promise<void>;
+  onOpenProfile: (post: DisplayPost) => void;
   posts: DisplayPost[];
 }) {
   if (loading) {
@@ -488,7 +612,7 @@ function HomeFeed({
   return (
     <section className="home-feed" aria-label="Home feed">
       {posts.map((post) => (
-        <FeedCard comments={comments.filter((comment) => comment.targetType === "post" && comment.targetId === post.id)} key={post.id} onAddComment={onAddComment} onLoadComments={onLoadComments} post={post} />
+        <FeedCard comments={comments.filter((comment) => comment.targetType === "post" && comment.targetId === post.id)} key={post.id} onAddComment={onAddComment} onLoadComments={onLoadComments} onOpenProfile={onOpenProfile} post={post} />
       ))}
     </section>
   );
@@ -498,15 +622,21 @@ function FeedCard({
   comments,
   onAddComment,
   onLoadComments,
+  onOpenProfile,
   post,
 }: {
   comments: Comment[];
   onAddComment: (postId: number, body: string) => Promise<void>;
   onLoadComments: (postId: number) => Promise<void>;
+  onOpenProfile: (post: DisplayPost) => void;
   post: DisplayPost;
 }) {
   const [commentText, setCommentText] = useState("");
+  const [promoted, setPromoted] = useState(false);
+  const [promoteCount, setPromoteCount] = useState(post.likes);
   const [open, setOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareStatus, setShareStatus] = useState("");
 
   async function submitComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -518,25 +648,49 @@ function FeedCard({
     setOpen(true);
   }
 
+  function promotePost() {
+    setPromoted((current) => {
+      setPromoteCount((count) => count + (current ? -1 : 1));
+      return !current;
+    });
+  }
+
+  async function shareToProfile() {
+    setShareStatus("Sharing...");
+    try {
+      await createPost({
+        body: `Sharing ${post.author.name}'s post: ${post.body}`,
+        mood: post.mood,
+      });
+      setShareStatus("Shared to your profile.");
+    } catch (err) {
+      setShareStatus(err instanceof Error ? err.message : "Could not share to profile.");
+    }
+  }
+
+  async function shareOutsideApp() {
+    const shareUrl = `${window.location.origin}/?post=${post.id}`;
+    const shareText = `${post.author.name} on Creators: ${post.body}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${post.author.name} on Creators`,
+          text: shareText,
+          url: shareUrl,
+        });
+        setShareStatus("Share sheet opened.");
+        return;
+      }
+      await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+      setShareStatus("Link copied for external sharing.");
+    } catch (err) {
+      setShareStatus(err instanceof Error ? err.message : "External share was cancelled.");
+    }
+  }
+
   return (
     <article className="feed-card">
-      <header className="feed-card-header">
-        <img alt="" src={profileImageFor(post.author.name)} />
-        <div>
-          <h2>{post.author.name}</h2>
-          <span>{timeAgo(post.createdAt)}</span>
-        </div>
-        <button type="button">FOLLOW</button>
-      </header>
-
-      <div className="tag-row">
-        {post.tags.map((tag) => (
-          <span key={tag}>#{tag}</span>
-        ))}
-      </div>
-
-      <p className="feed-copy">{post.body}</p>
-
       <div className="photo-grid">
         <img className="photo-grid-main" alt="" src={post.gallery[0]} />
         {post.gallery.slice(1, 5).map((image, index) => (
@@ -545,19 +699,58 @@ function FeedCard({
             {index === 3 ? <span>+23</span> : null}
           </div>
         ))}
+
+        <div className="feed-image-shade" />
+        <header className="feed-card-header">
+          <button className="feed-profile-trigger" type="button" onClick={() => onOpenProfile(post)} aria-label={`Open ${post.author.name} profile`}>
+            <img alt="" src={profileImageFor(post.author.name)} />
+            <span>
+              <strong>{post.author.name}</strong>
+              <small>{timeAgo(post.createdAt)}</small>
+            </span>
+          </button>
+          <button type="button">FOLLOW</button>
+        </header>
+
+        <div className="feed-overlay-copy">
+          <div className="tag-row">
+            {post.tags.map((tag) => (
+              <span key={tag}>#{tag}</span>
+            ))}
+          </div>
+          <p className="feed-copy">{post.body}</p>
+        </div>
+
+        <footer className="feed-actions">
+          <button className={promoted ? "promote active" : "promote"} type="button" aria-label="Promote post" aria-pressed={promoted} onClick={promotePost}>
+            <span className="action-icon trend" aria-hidden="true" />
+          </button>
+          <span>{promoteCount}</span>
+          <button className="share-action" type="button" aria-label="Share post" onClick={() => setShareOpen((value) => !value)}>
+            <span className="action-icon share" aria-hidden="true" />
+          </button>
+          <span>{Math.max(0, Math.round(post.likes / 4))}</span>
+          <button className="comment" type="button" aria-label="Open comments" onClick={() => { setOpen((value) => !value); void onLoadComments(post.id); }}>
+            <span className="action-icon chat" aria-hidden="true" />
+          </button>
+          <span>{post.comments + comments.length}</span>
+          <div className="reader-stack">
+            <img alt="" src={profileImageFor(`${post.author.name}-1`)} />
+            <img alt="" src={profileImageFor(`${post.author.name}-2`)} />
+            <img alt="" src={profileImageFor(`${post.author.name}-3`)} />
+          </div>
+        </footer>
       </div>
 
-      <footer className="feed-actions">
-        <span className="heart">Love</span>
-        <span>{post.likes}</span>
-        <button className="comment" type="button" onClick={() => { setOpen((value) => !value); void onLoadComments(post.id); }}>Chat</button>
-        <span>{post.comments + comments.length}</span>
-        <div className="reader-stack">
-          <img alt="" src={profileImageFor(`${post.author.name}-1`)} />
-          <img alt="" src={profileImageFor(`${post.author.name}-2`)} />
-          <img alt="" src={profileImageFor(`${post.author.name}-3`)} />
-        </div>
-      </footer>
+      {shareOpen ? (
+        <section className="share-panel" aria-label="Share post">
+          <button type="button" onClick={() => void shareToProfile()}>Share to my profile</button>
+          <button type="button" onClick={() => void shareOutsideApp()}>Share outside app</button>
+          <button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/?post=${post.id}`).then(() => setShareStatus("Post link copied."))}>Copy link</button>
+          {shareStatus ? <p>{shareStatus}</p> : null}
+        </section>
+      ) : null}
+
       {open ? (
         <section className="comment-panel">
           {comments.map((comment) => (
@@ -759,18 +952,43 @@ function SearchMessages({
   );
 }
 
-function NotificationsPanel({ posts, serviceLabel }: { posts: DisplayPost[]; serviceLabel: string }) {
+function StudioPanel({ posts, serviceLabel }: { posts: DisplayPost[]; serviceLabel: string }) {
+  const topPosts = posts.slice(0, 3);
+  const topBoost = topPosts[0]?.promotionScore ?? 0;
+  const totalReach = topPosts.reduce((total, post) => total + post.likes + post.comments, 0);
+
   return (
-    <section className="notification-panel">
-      <h1>Notifications</h1>
-      <article>
+    <section className="studio-panel">
+      <header className="studio-panel-head">
+        <p>Creator workspace</p>
+        <h1>Studio</h1>
+      </header>
+
+      <article className="studio-status-card">
+        <span>Live stack</span>
         <strong>{serviceLabel}</strong>
-        <p>Your backend feed is connected and ready.</p>
+        <p>Your creator tools are ready for posts, promotions, comments, and profile updates.</p>
       </article>
-      {posts.slice(0, 3).map((post) => (
-        <article key={post.id}>
-          <strong>{post.author.name}</strong>
-          <p>Your promotion score is now {post.promotionScore}%.</p>
+
+      <div className="studio-metrics" aria-label="Studio metrics">
+        <span><strong>{posts.length}</strong> Posts</span>
+        <span><strong>{topBoost}%</strong> Top boost</span>
+        <span><strong>{compactNumber(totalReach)}</strong> Reach</span>
+      </div>
+
+      <div className="studio-section-title">
+        <h2>Promotion queue</h2>
+        <button type="button">New campaign</button>
+      </div>
+
+      {topPosts.map((post) => (
+        <article className="studio-post-row" key={post.id}>
+          <img alt="" src={post.gallery[0]} />
+          <span>
+            <strong>{post.author.name}</strong>
+            <small>{post.promotionScore}% trend score · {post.mood}</small>
+          </span>
+          <button type="button">Promote</button>
         </article>
       ))}
     </section>
@@ -780,16 +998,79 @@ function NotificationsPanel({ posts, serviceLabel }: { posts: DisplayPost[]; ser
 function ProfilePanel({
   health,
   onLogout,
-  onSaveProfile,
+  onOpenSettings,
   posts,
   profile,
   user,
 }: {
   health: HealthResponse | null;
   onLogout: () => void;
-  onSaveProfile: (input: { name: string; bio: string; headline: string; location: string }) => Promise<void>;
+  onOpenSettings: () => void;
   posts: DisplayPost[];
   profile: ProfileResponse | null;
+  user: AuthUser;
+}) {
+  const profilePosts = posts.slice(0, 4);
+
+  return (
+    <section className="profile-panel">
+      <header className="profile-top-actions">
+        <span>Profile</span>
+        <button className="round-icon settings" type="button" onClick={onOpenSettings} aria-label="Open profile settings">
+          Settings
+        </button>
+      </header>
+
+      <div className="own-profile-hero">
+        <div className="own-profile-avatar">
+          <img alt="" src={profileImageFor(user.name)} />
+        </div>
+        <h1>{user.name}</h1>
+        <p>{profile?.headline || "Digital creator"}</p>
+        <button className="mini-follow" type="button" onClick={onOpenSettings}>
+          Edit profile
+        </button>
+      </div>
+
+      <div className="profile-stats">
+        <span><strong>{posts.length}</strong> Posts</span>
+        <span><strong>{health?.status === "ok" ? "Live" : "Sync"}</strong> API</span>
+        <span><strong>{user.provider}</strong> Auth</span>
+      </div>
+
+      <p className="profile-summary">{profile?.bio || "Shape your creator identity, publish drops, and keep your audience close."}</p>
+
+      <div className="profile-section-head">
+        <h2>Photos & Videos</h2>
+        <button type="button">View all</button>
+      </div>
+      <div className="profile-mini-gallery">
+        {profilePosts.map((post) => (
+          <img alt="" key={post.id} src={post.gallery[0]} />
+        ))}
+      </div>
+      <button className="logout-link" type="button" onClick={onLogout}>Sign out</button>
+    </section>
+  );
+}
+
+function ProfileSettingsPanel({
+  onBack,
+  onLogout,
+  onSaveProfile,
+  onThemeChange,
+  profile,
+  theme,
+  themes,
+  user,
+}: {
+  onBack: () => void;
+  onLogout: () => void;
+  onSaveProfile: (input: { name: string; bio: string; headline: string; location: string }) => Promise<void>;
+  onThemeChange: (theme: ThemeName) => void;
+  profile: ProfileResponse | null;
+  theme: ThemeName;
+  themes: typeof themeOptions;
   user: AuthUser;
 }) {
   const [bio, setBio] = useState(profile?.bio ?? "");
@@ -810,31 +1091,149 @@ function ProfilePanel({
     setSaving(true);
     try {
       await onSaveProfile({ name, bio, headline, location });
+      onBack();
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <section className="profile-panel">
-      <div className="profile-hero" style={{ backgroundImage: `url("${postImageFor(user.id)}")` }}>
+    <section className="settings-screen">
+      <header className="settings-topbar">
+        <button className="round-icon" type="button" onClick={onBack} aria-label="Back to profile">x</button>
+        <strong>Settings</strong>
+        <button className="settings-save" form="profile-settings-form" type="submit" disabled={saving}>
+          {saving ? "Saving" : "Save"}
+        </button>
+      </header>
+
+      <div className="settings-profile-card">
         <img alt="" src={profileImageFor(user.name)} />
+        <h1>{user.name}</h1>
+        <p>{user.email}</p>
+        <button type="button">View profile</button>
       </div>
-      <h1>{user.name}</h1>
-      <p>{profile?.headline || user.email}</p>
-      <div className="profile-stats">
-        <span><strong>{posts.length}</strong> Posts</span>
-        <span><strong>{health?.status === "ok" ? "Live" : "Sync"}</strong> API</span>
-        <span><strong>{user.provider}</strong> Auth</span>
-      </div>
-      <form className="profile-edit" onSubmit={(event) => void submitProfile(event)}>
+
+      <form id="profile-settings-form" className="settings-form" onSubmit={(event) => void submitProfile(event)}>
         <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
         <label>Headline<input value={headline} onChange={(event) => setHeadline(event.target.value)} /></label>
         <label>Location<input value={location} onChange={(event) => setLocation(event.target.value)} /></label>
         <label>Bio<textarea value={bio} onChange={(event) => setBio(event.target.value)} /></label>
-        <button className="follow-pill wide" type="submit" disabled={saving}>{saving ? "Saving..." : "Save profile"}</button>
       </form>
-      <button className="follow-pill wide" type="button" onClick={onLogout}>Sign out</button>
+
+      <div className="settings-list">
+        <button type="button"><span>Show me away</span><strong>Off</strong></button>
+        <button type="button"><span>My Profile</span><strong>Edit</strong></button>
+        <button type="button"><span>Join a Team</span><strong>New</strong></button>
+        <button type="button"><span>Share Profile</span><strong>Copy</strong></button>
+        <button type="button"><span>Activity Sync</span><strong>On</strong></button>
+      </div>
+
+      <section className="settings-card">
+        <div className="theme-section-head">
+          <h2>Theme</h2>
+          <p>Pick the look for your web and app view.</p>
+        </div>
+        <div className="theme-options" aria-label="Theme options">
+          {themes.map((option) => (
+            <label className={option.id === theme ? "theme-option active" : "theme-option"} key={option.id}>
+              <input
+                checked={option.id === theme}
+                name="app-theme"
+                type="radio"
+                onChange={() => onThemeChange(option.id)}
+              />
+              <span className="theme-radio" aria-hidden="true">
+                <i />
+              </span>
+              <span className="theme-swatches" aria-hidden="true">
+                {option.swatches.map((swatch) => (
+                  <i key={swatch} style={{ background: swatch }} />
+                ))}
+              </span>
+              <span className="theme-copy">
+                <strong>{option.label}</strong>
+                <small>{option.caption}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </section>
+
+      <section className="settings-card">
+        <h2>Notifications</h2>
+        <div className="setting-toggle"><span>New followers</span><i /></div>
+        <div className="setting-toggle"><span>Creator drops</span><i /></div>
+        <div className="setting-toggle"><span>Marketing team</span><i /></div>
+      </section>
+
+      <button className="logout-link danger" type="button" onClick={onLogout}>Log out</button>
+    </section>
+  );
+}
+
+function PublicProfileScreen({ post, onBack }: { post: DisplayPost; onBack: () => void }) {
+  const followerCount = compactNumber(24000 + post.id * 7);
+  const followingCount = compactNumber(180 + (post.id % 90));
+  const creationCount = compactNumber(680 + (post.id % 160));
+  const gallery = post.gallery.length >= 3 ? post.gallery : [postImageFor(post.id), postImageFor(post.id + 1), postImageFor(post.id + 2)];
+  const handle = `@${post.author.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`;
+
+  return (
+    <section className="public-profile" aria-label={`${post.author.name} profile`}>
+      <div className="public-profile-hero" style={{ backgroundImage: `url("${gallery[0]}")` }}>
+        <div className="public-profile-shade" />
+        <header className="public-profile-topbar">
+          <button className="round-icon" type="button" onClick={onBack} aria-label="Back to feed">
+            x
+          </button>
+          <button className="round-icon" type="button" aria-label="More profile actions">
+            ...
+          </button>
+        </header>
+
+        <aside className="public-side-actions" aria-label="Profile actions">
+          <button type="button">+</button>
+          <button type="button">Like</button>
+        </aside>
+
+        <div className="public-profile-card">
+          <div className="public-avatar-wrap neon">
+            <img alt="" src={profileImageFor(post.author.name)} />
+          </div>
+          <h1>{post.author.name}</h1>
+          <p className="public-handle">{handle}</p>
+
+          <div className="public-profile-stats" aria-label="Profile statistics">
+            <span><strong>{followingCount}</strong> Following</span>
+            <span><strong>{followerCount}</strong> Followers</span>
+            <span><strong>{creationCount}</strong> Creations</span>
+          </div>
+
+          <div className="public-friend-strip">
+            {gallery.slice(0, 4).map((image) => <img alt="" key={image} src={image} />)}
+          </div>
+          <nav className="public-profile-tabs" aria-label="Profile content filters">
+            <button className="active" type="button">All</button>
+            <button type="button">Live</button>
+            <button type="button">Posts</button>
+            <button type="button">Music</button>
+          </nav>
+        </div>
+      </div>
+
+      <div className="profile-section-head public">
+        <h2>Photos & Videos</h2>
+        <button type="button">See all</button>
+      </div>
+      <div className="public-gallery">
+        {gallery.slice(0, 6).map((image, index) => (
+          <button className={index === 0 ? "featured" : ""} type="button" key={image}>
+            <img alt="" src={image} />
+            <span>{index === 0 ? "Latest drop" : post.tags[index % post.tags.length]}</span>
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
@@ -845,11 +1244,13 @@ function BottomNav({ activeTab, onTabChange }: { activeTab: HomeTab; onTabChange
       {bottomTabs.map((tab) => (
         <button
           className={activeTab === tab.id ? "active" : ""}
+          aria-current={activeTab === tab.id ? "page" : undefined}
+          aria-label={tab.label}
           key={tab.id}
           type="button"
           onClick={() => onTabChange(tab.id)}
         >
-          <span>{tab.icon}</span>
+          <span className={`nav-glyph ${tab.icon}`} aria-hidden="true" />
           <small>{tab.label}</small>
         </button>
       ))}
@@ -1015,6 +1416,14 @@ function elapsedTime(value: string) {
   return `${hours}:${mins}:30`;
 }
 
+function firstName(value: string) {
+  return value.trim().split(/\s+/)[0] || value;
+}
+
+function compactNumber(value: number) {
+  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
 function profileImageFor(seed: string) {
   const images = [
     "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=240&q=80",
@@ -1057,3 +1466,11 @@ function indexFor(value: string, length: number) {
   }
   return Math.abs(hash) % length;
 }
+
+function isThemeName(value: string | null): value is ThemeName {
+  return value === "default" || value === "dark" || value === "beautiful" || value === "blueish" || value === "greenish" || value === "whiteish";
+}
+
+
+
+
