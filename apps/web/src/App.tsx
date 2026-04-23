@@ -23,12 +23,15 @@ import ForumRounded from "@mui/icons-material/ForumRounded";
 import GroupsRounded from "@mui/icons-material/GroupsRounded";
 import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
 import NorthEastRounded from "@mui/icons-material/NorthEastRounded";
+import PhoneRounded from "@mui/icons-material/PhoneRounded";
 import PersonAddAlt1Rounded from "@mui/icons-material/PersonAddAlt1Rounded";
 import PersonRemoveRounded from "@mui/icons-material/PersonRemoveRounded";
 import PlayCircleRounded from "@mui/icons-material/PlayCircleRounded";
+import SearchRounded from "@mui/icons-material/SearchRounded";
 import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
 import SendRounded from "@mui/icons-material/SendRounded";
 import SettingsRounded from "@mui/icons-material/SettingsRounded";
+import VideocamOutlined from "@mui/icons-material/VideocamOutlined";
 import VideocamRounded from "@mui/icons-material/VideocamRounded";
 import {
   clearStoredToken,
@@ -508,6 +511,9 @@ function HomeApp({
   }
 
   function changeTab(tab: HomeTab) {
+    if (tab === "streams") {
+      setSelectedLiveId(null);
+    }
     if (tab === "profiles") {
       setProfileView("profile");
     }
@@ -971,7 +977,17 @@ function StreamScreen({
   onToggleFollow: (name: string) => void;
   ratingsByLiveId: Map<number, LiveRating>;
 }) {
-  const live = selectedLive ?? liveRooms[0];
+  const live = selectedLive;
+  const [fullPlayer, setFullPlayer] = useState(false);
+  const spotlightRooms = liveIndex?.live ?? liveRooms;
+  const popularHosts = (liveIndex?.following ?? liveRooms).slice(0, 4);
+  const categories = [
+    { label: "All", active: true },
+    { label: "Esport" },
+    { label: "Channels" },
+    { label: "Categories" },
+    { label: "Top" },
+  ];
 
   useEffect(() => {
     if (live) {
@@ -979,11 +995,121 @@ function StreamScreen({
     }
   }, [live?.id]);
 
+  useEffect(() => {
+    if (!live) {
+      setFullPlayer(false);
+    }
+  }, [live]);
+
   if (!live) {
     return (
-      <section className="empty-stream">
-        <button type="button" onClick={onClose}>x</button>
-        <h1>No streams yet</h1>
+      <section className="stream-screen" style={{ backgroundImage: `url("${streamImageFor((spotlightRooms[0] ?? liveRooms[0])?.id ?? 1)}")` }}>
+        <div className="relative z-[2] mx-auto flex min-h-screen w-full max-w-6xl items-center px-3 pb-28 pt-4 md:px-5">
+          <Fade in timeout={320}>
+            <div className="w-full rounded-[34px] border border-white/10 bg-[color:rgba(8,12,20,0.78)] p-4 text-white shadow-2xl backdrop-blur-xl md:p-6">
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),320px]">
+                <div className="overflow-hidden rounded-[30px] border border-white/10 bg-black/20">
+                  <div className="relative">
+                    <img alt="" className="aspect-[1.08/1] w-full object-cover" src={streamImageFor((spotlightRooms[0] ?? liveRooms[0])?.id ?? 1)} />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+                    <div className="absolute left-4 top-4 flex items-center gap-2">
+                      <IconButton className="!bg-black/35 !text-white" onClick={onClose}>
+                        <ArrowBackRounded />
+                      </IconButton>
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 p-5 md:p-7">
+                      <p className="m-0 text-sm font-bold uppercase tracking-[0.22em] text-[color:var(--accent-3)]">Creators Live</p>
+                      <h1 className="mt-3 max-w-[12ch] text-4xl font-black leading-none md:text-6xl">
+                        Your Favorite <span className="text-[color:var(--accent)]">Streams</span>
+                      </h1>
+                      <p className="mt-4 max-w-xl text-sm leading-6 text-white/70 md:text-base">
+                        Discover what is live now, scan popular creators, then tap any stream card to move into the watch room with live chat and reactions.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <aside className="flex flex-col justify-between rounded-[30px] border border-white/10 bg-black/25 p-4">
+                  <div>
+                    <div className="flex flex-wrap gap-2">
+                      {categories.map((item) => (
+                        <Chip
+                          key={item.label}
+                          label={item.label}
+                          sx={{
+                            borderRadius: "999px",
+                            color: item.active ? "var(--text-dark)" : "#fff",
+                            background: item.active ? "linear-gradient(135deg, var(--accent), var(--accent-3))" : "rgba(255,255,255,0.08)",
+                            border: item.active ? "none" : "1px solid rgba(255,255,255,0.08)",
+                            fontWeight: 700,
+                          }}
+                        />
+                      ))}
+                    </div>
+
+                    <div className="mt-6">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h2 className="text-lg font-black">Live Now</h2>
+                        <IconButton className="!text-white/70">
+                          <MoreHorizRounded />
+                        </IconButton>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {spotlightRooms.slice(0, 4).map((room) => (
+                          <button className="group overflow-hidden rounded-[22px] border border-white/8 text-left transition hover:border-[color:var(--accent)]" key={room.id} type="button" onClick={() => onOpenStream(room)}>
+                            <div className="relative">
+                              <img alt="" className="aspect-[0.78/1] w-full object-cover transition duration-500 group-hover:scale-105" src={streamImageFor(room.id)} />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
+                              <Chip
+                                label={`${compactNumber(55000 + room.id * 11)} viewers`}
+                                size="small"
+                                sx={{
+                                  position: "absolute",
+                                  left: 8,
+                                  bottom: 52,
+                                  color: "var(--text-dark)",
+                                  background: "linear-gradient(135deg, #68f2bf, #c9ff7a)",
+                                  fontWeight: 800,
+                                }}
+                              />
+                              <div className="absolute inset-x-0 bottom-0 p-3">
+                                <p className="m-0 truncate text-sm font-black text-white">{room.title}</p>
+                                <p className="m-0 mt-1 truncate text-[11px] text-white/60">{room.host}</p>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h2 className="text-lg font-black">Popular Streamers</h2>
+                      <IconButton className="!text-white/70">
+                        <MoreHorizRounded />
+                      </IconButton>
+                    </div>
+                    <div className="space-y-3">
+                      {popularHosts.map((room) => (
+                        <button className="flex w-full items-center gap-3 rounded-[22px] border border-white/8 bg-white/5 p-3 text-left transition hover:bg-white/10" key={room.id} type="button" onClick={() => onOpenStream(room)}>
+                          <Badge color="success" overlap="circular" variant="dot">
+                            <Avatar src={profileImageFor(room.host)} />
+                          </Badge>
+                          <span className="min-w-0 flex-1">
+                            <strong className="block truncate text-sm">{room.host}</strong>
+                            <small className="block truncate text-xs text-white/55">{compactNumber(followersFor(room.host))} followers</small>
+                          </span>
+                          <NorthEastRounded sx={{ fontSize: 18, color: "var(--accent)" }} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </Fade>
+        </div>
       </section>
     );
   }
@@ -994,128 +1120,138 @@ function StreamScreen({
 
   return (
     <section className="stream-screen" style={{ backgroundImage: `url("${streamImageFor(live.id)}")` }}>
-      <div className="relative z-[2] grid min-h-screen grid-rows-[auto,1fr] gap-4 px-1 pb-28 pt-3 md:px-4">
-        <div className="flex items-center justify-between gap-3">
-          <IconButton className="!bg-white/80 !text-slate-900" onClick={onClose}>
-            <ArrowBackRounded />
-          </IconButton>
-          <div className="flex items-center gap-2">
-            <Chip icon={<AutoAwesomeRounded />} label="Live now" sx={{ color: "#fff", background: "rgba(8,12,20,0.45)", border: "1px solid rgba(255,255,255,0.14)" }} />
-            <IconButton className="!bg-black/30 !text-white">
-              <MoreHorizRounded />
-            </IconButton>
-          </div>
-        </div>
+      <div className="relative z-[2] mx-auto flex min-h-screen max-w-6xl items-center px-3 pb-28 pt-4 md:px-4">
+        <Fade in timeout={320}>
+          <div className="w-full rounded-[34px] border border-white/10 bg-[color:rgba(8,12,20,0.78)] p-3 text-white shadow-2xl backdrop-blur-xl md:p-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr),340px]">
+              <div className="overflow-hidden rounded-[30px] border border-white/10 bg-black/20">
+                <div className="relative">
+                  <button className="block w-full text-left" type="button" onClick={() => setFullPlayer(true)}>
+                    <img alt="" className="aspect-[1.3/1] w-full object-cover object-center transition duration-500 hover:scale-[1.02]" src={streamImageFor(live.id)} />
+                  </button>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/18 to-black/10" />
+                  <div className="absolute left-3 top-3 flex items-center gap-2">
+                    <IconButton className="!bg-black/35 !text-white" onClick={() => onClose()}>
+                      <ArrowBackRounded />
+                    </IconButton>
+                    <Chip icon={<VideocamRounded />} label="Live" sx={{ color: "#fff", background: "rgba(219,46,67,0.88)", fontWeight: 800 }} />
+                    <Chip label={`${compactNumber(55000 + live.id * 11)} viewers`} sx={{ color: "var(--text-dark)", background: "#68f2bf", fontWeight: 800 }} />
+                  </div>
+                  <div className="absolute inset-x-0 bottom-0 p-4 md:p-5">
+                    <h1 className="max-w-[16ch] text-3xl font-black leading-tight text-white md:text-4xl">{live.title}</h1>
+                    <p className="mt-2 text-sm text-white/70">{live.status === "live" ? "Counter-Strike • Global Offensive" : "Scheduled creator event"}</p>
+                  </div>
+                </div>
 
-        <div className="grid items-end gap-4 lg:grid-cols-[minmax(0,1fr),330px]">
-          <Fade in timeout={450}>
-            <div className="rounded-[32px] border border-white/10 bg-black/25 p-4 shadow-2xl backdrop-blur-md md:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <Badge color="error" overlap="circular" variant="dot">
-                    <Avatar src={profileImageFor(live.host)} sx={{ width: 54, height: 54 }} />
-                  </Badge>
-                  <div>
-                    <h1 className="text-xl font-black text-white md:text-2xl">{live.host}</h1>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/75">
-                      <span className="inline-flex items-center gap-1"><VideocamRounded sx={{ fontSize: 16 }} /> {live.title}</span>
-                      <span className="inline-flex items-center gap-1"><ScheduleRounded sx={{ fontSize: 16 }} /> {elapsedTime(live.startsAt)}</span>
+                <div className="p-4 md:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-white/8 bg-white/5 p-3">
+                    <div className="flex items-center gap-3">
+                      <Badge color="success" overlap="circular" variant="dot">
+                        <Avatar src={profileImageFor(live.host)} sx={{ width: 48, height: 48 }} />
+                      </Badge>
+                      <div>
+                        <strong className="block text-white">{live.host}</strong>
+                        <small className="text-white/60">{compactNumber(followersFor(live.host))} followers</small>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FollowPill following={following} onClick={() => onToggleFollow(live.host)} />
+                      <IconButton className="!bg-white/8 !text-white">
+                        <FavoriteRounded />
+                      </IconButton>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {[1, 2, 3, 4, 5].map((score) => (
+                      <Chip
+                        clickable
+                        key={score}
+                        label={`${score}`}
+                        onClick={() => void onRate(live.id, score)}
+                        sx={{
+                          width: 42,
+                          color: "#fff",
+                          fontWeight: 800,
+                          borderRadius: "999px",
+                          background: rating?.userScore === score ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "rgba(255,255,255,0.08)",
+                          border: "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-5">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h2 className="text-sm font-black uppercase tracking-[0.18em] text-white/60">More live now</h2>
+                      <IconButton className="!text-white/70">
+                        <MoreHorizRounded />
+                      </IconButton>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                      {spotlightRooms.filter((room) => room.id !== live.id).slice(0, 3).map((room) => (
+                        <button className="overflow-hidden rounded-[22px] border border-white/8 text-left transition hover:border-[color:var(--accent)]" key={room.id} type="button" onClick={() => onOpenStream(room)}>
+                          <div className="relative">
+                            <img alt="" className="aspect-[0.95/1] w-full object-cover" src={streamImageFor(room.id)} />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                            <div className="absolute inset-x-0 bottom-0 p-3">
+                              <p className="m-0 truncate text-sm font-black text-white">{room.title}</p>
+                              <p className="m-0 mt-1 truncate text-[11px] text-white/60">{room.host}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
-                <FollowPill following={following} onClick={() => onToggleFollow(live.host)} />
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <Paper elevation={0} sx={{ p: 1.5, borderRadius: "20px", background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)" }}>
-                  <p className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">Followers</p>
-                  <strong className="mt-1 block text-lg">{compactNumber(followersFor(live.host))}</strong>
-                </Paper>
-                <Paper elevation={0} sx={{ p: 1.5, borderRadius: "20px", background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)" }}>
-                  <p className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">Average rate</p>
-                  <strong className="mt-1 block text-lg">{rating ? rating.average.toFixed(1) : "New"}</strong>
-                </Paper>
-                <Paper elevation={0} sx={{ p: 1.5, borderRadius: "20px", background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.12)" }}>
-                  <p className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">Votes</p>
-                  <strong className="mt-1 block text-lg">{rating?.count ?? 0}</strong>
-                </Paper>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {[1, 2, 3, 4, 5].map((score) => (
-                  <Chip
-                    clickable
-                    color={rating?.userScore === score ? "primary" : "default"}
-                    key={score}
-                    label={`${score} star`}
-                    onClick={() => void onRate(live.id, score)}
-                    sx={{
-                      borderRadius: "999px",
-                      color: "#fff",
-                      background: rating?.userScore === score ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "rgba(255,255,255,0.08)",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                    }}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="m-0 text-sm font-bold text-white">Live comments</p>
-                  <span className="text-xs font-semibold text-white/60">{liveComments.length} messages</span>
+              <aside className="rounded-[30px] border border-white/10 bg-[color:rgba(5,8,16,0.48)] p-4 text-white">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-black">Chat</h2>
+                  <IconButton className="!text-white/70">
+                    <AutoAwesomeRounded />
+                  </IconButton>
                 </div>
-                <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
-                  {liveComments.slice(-4).map((comment) => (
-                    <Paper key={comment.id} elevation={0} sx={{ p: 1.25, borderRadius: "18px", background: "rgba(9,13,21,0.52)", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }}>
-                      <p className="m-0 text-sm font-semibold">{comment.author.name}</p>
-                      <EmojiText className="mt-1 block text-sm text-white/74" text={comment.body} />
-                    </Paper>
+                <div className="mt-4 space-y-3">
+                  {liveComments.slice(-6).map((comment) => (
+                    <div className="rounded-[20px] border border-white/8 bg-white/5 p-3" key={comment.id}>
+                      <p className="m-0 text-sm font-black text-[color:var(--accent-3)]">{comment.author.name}</p>
+                      <EmojiText className="mt-1 block text-sm text-white/80" text={comment.body} />
+                    </div>
                   ))}
+                  {!liveComments.length ? <p className="text-sm text-white/55">No chat yet. Be the first one in.</p> : null}
                 </div>
                 <EmojiComposer
-                  placeholder="React to the live with emoji and comments"
+                  placeholder="Say something in chat"
                   onSubmit={(value) => onAddComment(live.id, value)}
                 />
-              </div>
-            </div>
-          </Fade>
 
-          <div className="grid gap-3">
-            <Paper elevation={0} sx={{ p: 2, borderRadius: "28px", background: "rgba(8,12,20,0.5)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(16px)" }}>
-              <div className="mb-3 flex items-center justify-between">
-                <p className="m-0 text-sm font-black uppercase tracking-[0.18em] text-white/60">Up next</p>
-                <PlayCircleRounded sx={{ color: "var(--accent)" }} />
-              </div>
-              <div className="space-y-2">
-                {(liveIndex?.following ?? liveRooms).slice(0, 4).map((room) => (
-                  <button className="flex w-full items-center gap-3 rounded-2xl bg-white/5 px-3 py-2 text-left text-white transition hover:bg-white/10" key={room.id} type="button" onClick={() => onOpenStream(room)}>
-                    <Avatar src={profileImageFor(room.host)} />
-                    <span className="min-w-0 flex-1">
-                      <strong className="block truncate text-sm">{room.host}</strong>
-                      <small className="block truncate text-xs text-white/60">{room.title}</small>
-                    </span>
-                    <NorthEastRounded sx={{ fontSize: 18 }} />
-                  </button>
-                ))}
-              </div>
-            </Paper>
-
-            <Paper elevation={0} sx={{ p: 2, borderRadius: "28px", background: "rgba(8,12,20,0.5)", color: "#fff", border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(16px)" }}>
-              <p className="mb-3 text-sm font-black uppercase tracking-[0.18em] text-white/60">Schedule</p>
-              <Stack spacing={1.25}>
-                {(liveIndex?.scheduled ?? []).slice(0, 3).map((room) => (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2" key={room.id}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-semibold">{room.title}</span>
-                      <ScheduleRounded sx={{ fontSize: 16, color: "var(--accent)" }} />
-                    </div>
-                    <small className="text-white/60">{timeAgo(room.startsAt)}</small>
+                <div className="mt-6 space-y-3">
+                  <div className="rounded-[22px] border border-white/8 bg-white/5 p-3">
+                    <p className="m-0 text-xs font-black uppercase tracking-[0.18em] text-white/50">Average rate</p>
+                    <strong className="mt-2 block text-2xl">{rating ? rating.average.toFixed(1) : "New"}</strong>
+                    <small className="text-white/60">{rating?.count ?? 0} total votes</small>
                   </div>
-                ))}
-              </Stack>
-            </Paper>
+                  <div className="rounded-[22px] border border-white/8 bg-white/5 p-3">
+                    <p className="m-0 text-xs font-black uppercase tracking-[0.18em] text-white/50">Event schedule</p>
+                    <Stack spacing={1.25} sx={{ mt: 1.5 }}>
+                      {(liveIndex?.scheduled ?? []).slice(0, 3).map((room) => (
+                        <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2" key={room.id}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-semibold">{room.title}</span>
+                            <ScheduleRounded sx={{ fontSize: 16, color: "var(--accent)" }} />
+                          </div>
+                          <small className="text-white/60">{timeAgo(room.startsAt)}</small>
+                        </div>
+                      ))}
+                    </Stack>
+                  </div>
+                </div>
+              </aside>
+            </div>
           </div>
-        </div>
+        </Fade>
       </div>
       <div className="heart-float" aria-hidden="true">
         <span />
@@ -1124,6 +1260,26 @@ function StreamScreen({
         <span />
         <span />
       </div>
+      {fullPlayer ? (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-black/80 p-4 backdrop-blur-xl">
+          <div className="relative w-full max-w-sm overflow-hidden rounded-[40px] border border-white/10 bg-black shadow-2xl">
+            <button className="absolute left-4 top-4 z-[2] grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white" type="button" onClick={() => setFullPlayer(false)}>
+              <ArrowBackRounded />
+            </button>
+            <img alt="" className="aspect-[0.57/1] w-full object-cover" src={streamImageFor(live.id)} />
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 p-5 text-white">
+              <p className="m-0 text-xs font-black uppercase tracking-[0.2em] text-[color:var(--accent-3)]">Now Watching</p>
+              <h2 className="mt-2 text-3xl font-black leading-tight">{live.title}</h2>
+              <p className="mt-2 text-sm text-white/70">{live.host}</p>
+              <div className="mt-4 flex items-center gap-2">
+                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold">{compactNumber(55000 + live.id * 11)} viewers</span>
+                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold">{rating ? `${rating.average.toFixed(1)} rating` : "New stream"}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1167,26 +1323,63 @@ function SearchMessages({
     const query = search.trim().toLowerCase();
     return !query || contact.name.toLowerCase().includes(query) || (contact.subtitle ?? "").toLowerCase().includes(query);
   });
+  const tabs = [
+    { label: "Pinned", count: 0 },
+    { label: "Chats", count: visibleContacts.length, active: true },
+    { label: "Groups", count: 8 },
+  ];
 
   return (
     <section className="search-panel">
       <div className="mx-auto grid min-h-[calc(100vh-80px)] max-w-6xl gap-4 lg:grid-cols-[340px,minmax(0,1fr)]">
         <Fade in timeout={350}>
-          <Paper elevation={0} sx={{ p: 2, borderRadius: "28px", background: "var(--panel-elevated)", border: "1px solid var(--line-soft)", color: "var(--text-1)" }}>
+          <Paper elevation={0} sx={{ p: 2, borderRadius: "28px", background: "linear-gradient(180deg, color-mix(in srgb, var(--surface-3) 94%, transparent), color-mix(in srgb, var(--panel-bg) 92%, transparent))", border: "1px solid var(--line-soft)", color: "var(--text-1)" }}>
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="m-0 text-xs font-black uppercase tracking-[0.2em] text-[color:var(--text-3)]">Inbox</p>
+                <p className="m-0 text-xs font-black uppercase tracking-[0.2em] text-[color:var(--text-3)]">Direct</p>
                 <h1 className="mt-1 text-3xl font-black">Messages</h1>
               </div>
-              <IconButton className="!text-[color:var(--accent)]" onClick={onOpenProfile}>
-                <SettingsRounded />
-              </IconButton>
+              <div className="flex items-center gap-1">
+                <IconButton className="!text-[color:var(--accent)]">
+                  <SearchRounded />
+                </IconButton>
+                <IconButton className="!text-[color:var(--accent)]" onClick={onOpenProfile}>
+                  <SettingsRounded />
+                </IconButton>
+              </div>
+            </div>
+
+            <div className="mb-4 flex gap-3 overflow-x-auto pb-1">
+              {contacts.slice(0, 5).map((contact) => (
+                <button className="flex min-w-[62px] flex-col items-center gap-2 text-center" key={contact.id} type="button" onClick={() => void onOpenThread(contact.id)}>
+                  <div className="rounded-full bg-[linear-gradient(135deg,var(--accent),#49d17d)] p-[2px]">
+                    <Avatar src={profileImageFor(contact.name)} sx={{ width: 54, height: 54, border: "3px solid var(--panel-bg)" }} />
+                  </div>
+                  <span className="max-w-[64px] truncate text-[11px] font-semibold text-[color:var(--text-3)]">{firstName(contact.name)}</span>
+                </button>
+              ))}
             </div>
 
             <Paper elevation={0} sx={{ px: 1.5, py: 0.75, display: "flex", alignItems: "center", gap: 1, borderRadius: "18px", background: "var(--surface-3)", border: "1px solid var(--line-soft)" }}>
               <ForumRounded sx={{ color: "var(--accent)", fontSize: 18 }} />
               <InputBase placeholder="Search conversations" sx={{ color: "var(--text-1)", flex: 1 }} value={search} onChange={(event) => setSearch(event.target.value)} />
             </Paper>
+
+            <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1">
+              {tabs.map((tab) => (
+                <Chip
+                  key={tab.label}
+                  label={`${tab.label}${tab.count ? ` ${tab.count}` : ""}`}
+                  sx={{
+                    borderRadius: "999px",
+                    fontWeight: 800,
+                    color: tab.active ? "var(--text-dark)" : "var(--text-3)",
+                    background: tab.active ? "linear-gradient(135deg, #49d17d, #84f7a5)" : "var(--surface-3)",
+                    border: tab.active ? "none" : "1px solid var(--line-soft)",
+                  }}
+                />
+              ))}
+            </div>
 
             <div className="mt-4 space-y-3">
               {visibleContacts.map((contact) => (
@@ -1198,11 +1391,17 @@ function SearchMessages({
                     <button className="flex min-w-0 flex-1 items-center gap-3 text-left" type="button" onClick={() => void onOpenThread(contact.id)}>
                       <Avatar src={profileImageFor(contact.name)} sx={{ width: 50, height: 50 }} />
                       <span className="min-w-0 flex-1">
-                        <strong className="block truncate text-sm">{contact.name}</strong>
+                        <span className="flex items-center justify-between gap-2">
+                          <strong className="block truncate text-sm">{contact.name}</strong>
+                          <small className="shrink-0 text-[11px] text-[color:var(--text-3)]">25m</small>
+                        </span>
                         <small className="block truncate text-xs text-[color:var(--text-3)]">{contact.lastBody || contact.subtitle}</small>
                       </span>
                     </button>
-                    <FollowPill following={isFollowing(contact.name)} onClick={() => onToggleFollow(contact.name)} />
+                    <div className="flex flex-col items-end gap-2">
+                      <FollowPill following={isFollowing(contact.name)} onClick={() => onToggleFollow(contact.name)} />
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#49d17d]" />
+                    </div>
                   </div>
                 </article>
               ))}
@@ -1211,26 +1410,32 @@ function SearchMessages({
         </Fade>
 
         <Fade in timeout={500}>
-          <Paper elevation={0} sx={{ p: 2, borderRadius: "32px", background: "linear-gradient(180deg, color-mix(in srgb, var(--surface-1) 82%, transparent), color-mix(in srgb, var(--surface-3) 92%, transparent))", border: "1px solid var(--line-soft)", color: "var(--text-1)" }}>
+          <Paper elevation={0} sx={{ p: 2, borderRadius: "32px", background: "linear-gradient(180deg, rgba(14,18,24,0.96), rgba(25,31,39,0.98))", border: "1px solid rgba(255,255,255,0.08)", color: "#fff" }}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <Avatar src={profileImageFor(activeContact?.name ?? "chat")} sx={{ width: 58, height: 58 }} />
                 <div>
                   <h2 className="m-0 text-xl font-black">{activeContact?.name ?? "Chat"}</h2>
-                  <p className="m-0 text-sm text-[color:var(--text-3)]">{activeContact?.subtitle ?? "Direct conversation"}</p>
+                  <p className="m-0 text-sm text-white/50">{activeContact?.subtitle ?? "Direct conversation"}</p>
                 </div>
               </div>
-              <AvatarGroup max={4}>
-                {contacts.slice(0, 4).map((contact) => (
-                  <Avatar key={contact.id} src={profileImageFor(contact.name)} />
-                ))}
-              </AvatarGroup>
+              <div className="flex items-center gap-1">
+                <IconButton className="!text-white/75">
+                  <PhoneRounded />
+                </IconButton>
+                <IconButton className="!text-white/75">
+                  <VideocamOutlined />
+                </IconButton>
+                <IconButton className="!text-white/75">
+                  <MoreHorizRounded />
+                </IconButton>
+              </div>
             </div>
 
-            <div className="mt-4 rounded-[28px] border border-[color:var(--line-soft)] bg-black/10 p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[color:var(--text-3)]">
+            <div className="mt-4 rounded-[28px] border border-white/6 bg-black/10 p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white/40">
                 <CommentRounded sx={{ fontSize: 18 }} />
-                Smooth, WhatsApp-like thread flow
+                WhatsApp-style thread flow
               </div>
               <div className="chat-bubbles min-h-[320px]">
                 {messages.map((message) => (
@@ -1241,8 +1446,8 @@ function SearchMessages({
                     sx={{
                       p: 1.5,
                       borderRadius: message.own ? "22px 22px 8px 22px" : "22px 22px 22px 8px",
-                      background: message.own ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "var(--surface-2)",
-                      color: message.own ? "#fff" : "var(--text-1)",
+                      background: message.own ? "linear-gradient(135deg, #2ec866, #50df82)" : "rgba(255,255,255,0.08)",
+                      color: "#fff",
                     }}
                   >
                     <EmojiText className="text-sm" text={message.body} />
