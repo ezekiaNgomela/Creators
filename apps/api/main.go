@@ -33,6 +33,7 @@ type appServer struct {
 	redisClient    *redis.Client
 	minioHealthURL string
 	frontendOrigin string
+	frontendOrigins []string
 	jwtSecret      string
 	jwtIssuer      string
 	googleClient   googleConfig
@@ -232,6 +233,7 @@ func main() {
 			RedirectURL:  valueOrDefault("GOOGLE_REDIRECT_URL", "http://localhost:18000/api/auth/google/callback"),
 		},
 	}
+	server.frontendOrigins = splitOrigins(server.frontendOrigin)
 
 	ctx := context.Background()
 
@@ -1526,11 +1528,12 @@ func (s *appServer) checkDependencies(parent context.Context) healthResponse {
 }
 
 func (s *appServer) withCORS(next http.Handler) http.Handler {
-	allowedOrigin := strings.TrimSpace(s.frontendOrigin)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		allowedOrigin := s.allowedOrigin(r.Header.Get("Origin"))
 		if allowedOrigin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Vary", "Origin")
 		}
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
@@ -1556,6 +1559,46 @@ func (s *appServer) redirectFrontend(w http.ResponseWriter, r *http.Request, que
 		target += "?" + query
 	}
 	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+}
+
+func (s *appServer) allowedOrigin(origin string) string {
+	origin = strings.TrimSpace(origin)
+	if origin == "" {
+		return ""
+	}
+
+	for _, allowed := range s.frontendOrigins {
+		if origin == allowed {
+			return allowed
+		}
+	}
+
+	return ""
+}
+
+func splitOrigins(raw string) []string {
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts)+1)
+	seen := map[string]struct{}{}
+
+	for _, part := range parts {
+		origin := strings.TrimSpace(part)
+		if origin == "" {
+			continue
+		}
+		if _, ok := seen[origin]; ok {
+			continue
+		}
+		seen[origin] = struct{}{}
+		origins = append(origins, origin)
+	}
+
+	defaultExpoOrigin := "http://localhost:8081"
+	if _, ok := seen[defaultExpoOrigin]; !ok {
+		origins = append(origins, defaultExpoOrigin)
+	}
+
+	return origins
 }
 
 func decodeJSON(r *http.Request, value any) error {
