@@ -7,6 +7,7 @@ import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-na
 
 import type { DisplayPost } from "@/src/providers/app-provider";
 import type { HealthResponse, LiveRoom, ProfileResponse } from "@/src/services/api";
+import { ChannelsSlider } from "@/src/features/home/components/channels-slider";
 import { HomePostCard } from "@/src/features/home/components/home-post-card";
 import { radius, spacing } from "@/src/theme/tokens";
 
@@ -43,19 +44,6 @@ export function HomeLayout({
 }: HomeLayoutProps) {
   const [activeFilter, setActiveFilter] = useState<"Local" | "Global" | "Trend">("Trend");
   const { width } = useWindowDimensions();
-
-  const featuredRoom = useMemo(() => {
-    if (!liveRooms.length) {
-      return null;
-    }
-    if (activeFilter === "Local") {
-      return liveRooms[liveRooms.length - 1];
-    }
-    if (activeFilter === "Global") {
-      return [...liveRooms].sort((left, right) => right.viewers - left.viewers)[0];
-    }
-    return liveRooms[0];
-  }, [activeFilter, liveRooms]);
 
   const filteredPosts = useMemo(() => {
     if (activeFilter === "Local") {
@@ -128,54 +116,6 @@ export function HomeLayout({
           <StoryBubble label="You" seed={sessionName ?? "creator"} />
         </ScrollView>
 
-        {featuredRoom ? (
-          <Pressable
-            onPress={() => onOpenLive(featuredRoom)}
-            style={{
-              overflow: "hidden",
-              borderRadius: 28,
-              backgroundColor: "#fff",
-            }}
-          >
-            <Image
-              source={{ uri: `https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1200&q=80&sig=hero-${featuredRoom.id}` }}
-              style={{ width: "100%", aspectRatio: width >= 900 ? 1.85 : 1.1 }}
-            />
-            <LinearGradient
-              colors={["rgba(255,255,255,0.02)", "rgba(38,20,10,0.82)"]}
-              style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }}
-            />
-            <View style={{ position: "absolute", left: spacing.lg, right: spacing.lg, top: spacing.lg }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <View
-                  style={{
-                    borderRadius: radius.pill,
-                    backgroundColor: "rgba(255,255,255,0.84)",
-                    paddingHorizontal: spacing.sm,
-                    paddingVertical: 6,
-                  }}
-                >
-                  <Text style={{ color: homeColors.accentStrong, fontSize: 11, fontWeight: "900" as const }}>
-                    {activeFilter} feed
-                  </Text>
-                </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Ionicons color="#fff" name="heart" size={14} />
-                  <Text style={{ color: "#fff", fontWeight: "800" as const, fontSize: 12 }}>
-                    {Math.max(18, Math.floor(featuredRoom.viewers / 1000))}k
-                  </Text>
-                </View>
-              </View>
-            </View>
-            <View style={{ position: "absolute", left: spacing.lg, right: spacing.lg, bottom: spacing.lg, gap: spacing.xs }}>
-              <Text style={{ color: "#fff", fontSize: 26, fontWeight: "900" as const }}>{featuredRoom.title}</Text>
-              <Text style={{ color: "rgba(255,255,255,0.84)", fontSize: 13 }}>
-                {featuredRoom.host} is live in {featuredRoom.topic.toLowerCase()}
-              </Text>
-            </View>
-          </Pressable>
-        ) : null}
-
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}>
           <Text style={{ color: homeColors.soft, fontSize: 12, fontWeight: "800" as const }}>
             {profile?.headline ?? "Creator stories"}
@@ -185,6 +125,8 @@ export function HomeLayout({
           </Text>
         </View>
       </View>
+
+      <ChannelsSlider channels={liveRooms} onOpenChannel={onOpenLive} />
 
       <View
         style={{
