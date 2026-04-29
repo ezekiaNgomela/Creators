@@ -93,15 +93,32 @@ export type ChatContact = {
   subtitle: string;
   lastBody: string;
   updatedAt: string;
+  type: "direct" | "group" | string;
+  participantCount: number;
+  participants: ChatParticipant[];
+};
+
+export type ChatParticipant = {
+  id: number;
+  name: string;
+  email: string;
 };
 
 export type ChatMessage = {
   id: number;
   contactId: string;
+  roomId: string;
   body: string;
   sender: AuthUser;
   createdAt: string;
   own: boolean;
+};
+
+export type ChatUser = {
+  id: number;
+  name: string;
+  email: string;
+  headline: string;
 };
 
 type ApiError = { message?: string };
@@ -211,15 +228,36 @@ export async function fetchChatContacts() {
   return response.contacts;
 }
 
+export async function fetchChatUsers() {
+  const response = await apiRequest<{ users: ChatUser[] }>("/users");
+  return response.users;
+}
+
+export async function createChatRoom(input: { type: "direct" | "group"; title?: string; participantIds: number[] }) {
+  const response = await apiRequest<{ room: ChatContact }>("/chats", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.room;
+}
+
+export async function addUsersToChatRoom(input: { roomId: string; participantIds: number[] }) {
+  const response = await apiRequest<{ room: ChatContact }>("/chats/participants", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.room;
+}
+
 export async function fetchChatMessages(contactId: string) {
-  const response = await apiRequest<{ messages: ChatMessage[] }>(`/chats/messages?contactId=${encodeURIComponent(contactId)}`);
+  const response = await apiRequest<{ messages: ChatMessage[] }>(`/chats/messages?roomId=${encodeURIComponent(contactId)}`);
   return response.messages;
 }
 
 export async function sendChatMessage(input: { contactId: string; body: string }) {
   const response = await apiRequest<{ message: ChatMessage }>("/chats/messages", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ roomId: input.contactId, body: input.body }),
   });
   return response.message;
 }

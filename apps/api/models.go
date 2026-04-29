@@ -89,20 +89,37 @@ type LiveIndex struct {
 }
 
 type ChatContact struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Subtitle  string `json:"subtitle"`
-	LastBody  string `json:"lastBody"`
-	UpdatedAt string `json:"updatedAt"`
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	Subtitle         string            `json:"subtitle"`
+	LastBody         string            `json:"lastBody"`
+	UpdatedAt        string            `json:"updatedAt"`
+	Type             string            `json:"type"`
+	ParticipantCount int               `json:"participantCount"`
+	Participants     []ChatParticipant `json:"participants"`
+}
+
+type ChatParticipant struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 type ChatMessage struct {
 	ID        int64    `json:"id"`
 	ContactID string   `json:"contactId"`
+	RoomID    string   `json:"roomId"`
 	Body      string   `json:"body"`
 	Sender    AuthUser `json:"sender"`
 	CreatedAt string   `json:"createdAt"`
 	Own       bool     `json:"own"`
+}
+
+type ChatUser struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Headline string `json:"headline"`
 }
 
 func toAuthUser(user User) AuthUser {

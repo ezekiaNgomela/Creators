@@ -105,11 +105,40 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 	sender_name TEXT
 );
 
+CREATE TABLE IF NOT EXISTS chat_rooms (
+	id BIGSERIAL PRIMARY KEY,
+	type TEXT NOT NULL DEFAULT 'direct' CHECK (type IN ('direct', 'group')),
+	title TEXT NOT NULL DEFAULT '',
+	created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+	direct_key TEXT UNIQUE,
+	legacy_contact_id TEXT UNIQUE,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS chat_room_participants (
+	room_id BIGINT NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+	user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	role TEXT NOT NULL DEFAULT 'member',
+	joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+	PRIMARY KEY (room_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS chat_room_messages (
+	id BIGSERIAL PRIMARY KEY,
+	room_id BIGINT NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+	sender_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	body TEXT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS sender_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS sender_name TEXT;
 CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_target ON comments(target_type, target_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_user_contact ON chat_messages(user_id, contact_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_room_participants_user ON chat_room_participants(user_id, room_id);
+CREATE INDEX IF NOT EXISTS idx_chat_room_messages_room ON chat_room_messages(room_id, created_at);
 `
 
 func seedDatabase(ctx context.Context, pool *pgxpool.Pool) error {
@@ -140,6 +169,34 @@ func seedDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 			Headline: "Short-form editor and community host",
 			Bio:      "Turning production days into reusable edits, live rooms, and creator playbooks.",
 			Location: "London",
+		},
+		{
+			Email:    "alejandro@creators.local",
+			Name:     "Alejandro Hicks",
+			Headline: "Launch planning and creator operations",
+			Bio:      "Helping creators turn scattered launch work into calm repeatable rooms.",
+			Location: "Mexico City",
+		},
+		{
+			Email:    "mika@creators.local",
+			Name:     "Mika Studio",
+			Headline: "Commerce room host",
+			Bio:      "Building practical product-drop rooms for creators with real audience momentum.",
+			Location: "New York",
+		},
+		{
+			Email:    "maker-table@creators.local",
+			Name:     "The Maker Table",
+			Headline: "Community desk",
+			Bio:      "A shared workspace for Q&A rooms, maker reviews, and member-first planning.",
+			Location: "Remote",
+		},
+		{
+			Email:    "louise@creators.local",
+			Name:     "Louise Thornton",
+			Headline: "Portfolio critique lead",
+			Bio:      "Design reviews, portfolio edits, and steady release feedback for creators.",
+			Location: "Berlin",
 		},
 	}
 

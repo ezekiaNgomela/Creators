@@ -55,7 +55,9 @@ func main() {
 	mux.HandleFunc("/api/live", handler.HandleLive)
 	mux.HandleFunc("/api/live/rate", handler.HandleLiveRate)
 	mux.HandleFunc("/api/comments", handler.HandleComments)
+	mux.HandleFunc("/api/users", handler.HandleUsers)
 	mux.HandleFunc("/api/chats", handler.HandleChats)
+	mux.HandleFunc("/api/chats/participants", handler.HandleChatParticipants)
 	mux.HandleFunc("/api/chats/messages", handler.HandleChatMessages)
 
 	server := &http.Server{

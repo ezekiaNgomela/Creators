@@ -7,7 +7,7 @@ import { useApp } from "@/src/providers/app-provider";
 export type ChatMode = "Chats" | "Pinned" | "Groups";
 
 export function ChatScreen() {
-  const { activeChatId, chatContacts, chatMessages, loadThread, session } = useApp();
+  const { activeChatId, chatContacts, chatMessages, chatUsers, createDirectChat, createGroupChat, loadThread, session } = useApp();
   const [mode, setMode] = useState<ChatMode>("Chats");
   const [query, setQuery] = useState("");
 
@@ -26,7 +26,7 @@ export function ChatScreen() {
     }
 
     if (mode === "Groups") {
-      return base.filter((_, index) => index % 2 === 0);
+      return base.filter((contact) => contact.type === "group");
     }
 
     return base;
@@ -51,9 +51,12 @@ export function ChatScreen() {
     <ChatHomeLayout
       activeChatId={activeChatId}
       chatMessages={chatMessages}
+      chatUsers={chatUsers}
       contacts={chatContacts}
       filteredContacts={filteredContacts}
       mode={mode}
+      onCreateDirectChat={(participantId) => void createDirectChat(participantId)}
+      onCreateGroupChat={(input) => void createGroupChat(input)}
       onModeChange={setMode}
       onOpenThread={(contactId) => void openThread(contactId)}
       onOpenVideo={(contactId) => void openVideo(contactId)}

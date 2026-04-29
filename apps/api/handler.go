@@ -408,12 +408,32 @@ func (h *Handler) HandleComments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleChats(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
 	userID, ok := h.requireUser(w, r)
 	if !ok {
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		var input struct {
+			Type           string  `json:"type"`
+			Title          string  `json:"title"`
+			ParticipantIDs []int64 `json:"participantIds"`
+		}
+		if err := decodeJSON(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		room, err := h.Service.CreateChatRoom(r.Context(), userID, input.Type, input.Title, input.ParticipantIDs)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, publicError(err))
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]ChatContact{"room": room})
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 	contacts, err := h.Service.ListChatContacts(r.Context(), userID)
@@ -424,6 +444,48 @@ func (h *Handler) HandleChats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string][]ChatContact{"contacts": contacts})
 }
 
+func (h *Handler) HandleUsers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	users, err := h.Service.ListChatUsers(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load users")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]ChatUser{"users": users})
+}
+
+func (h *Handler) HandleChatParticipants(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	userID, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	var input struct {
+		RoomID         string  `json:"roomId"`
+		ParticipantIDs []int64 `json:"participantIds"`
+	}
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	room, err := h.Service.AddUsersToRoom(r.Context(), userID, input.RoomID, input.ParticipantIDs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, publicError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]ChatContact{"room": room})
+}
+
 func (h *Handler) HandleChatMessages(w http.ResponseWriter, r *http.Request) {
 	userID, ok := h.requireUser(w, r)
 	if !ok {
@@ -432,8 +494,8 @@ func (h *Handler) HandleChatMessages(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		contactID := r.URL.Query().Get("contactId")
-		messages, err := h.Service.ListChatMessages(r.Context(), userID, contactID)
+		roomID := firstNonBlank(r.URL.Query().Get("roomId"), r.URL.Query().Get("contactId"))
+		messages, err := h.Service.ListChatMessages(r.Context(), userID, roomID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, publicError(err))
 			return
@@ -442,13 +504,15 @@ func (h *Handler) HandleChatMessages(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var input struct {
 			ContactID string `json:"contactId"`
+			RoomID    string `json:"roomId"`
 			Body      string `json:"body"`
 		}
 		if err := decodeJSON(r, &input); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		message, err := h.Service.SendChatMessage(r.Context(), userID, input.ContactID, input.Body)
+		roomID := firstNonBlank(input.RoomID, input.ContactID)
+		message, err := h.Service.SendChatMessage(r.Context(), userID, roomID, input.Body)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, publicError(err))
 			return
@@ -505,4 +569,13 @@ func (h *Handler) redirectGoogleError(w http.ResponseWriter, r *http.Request, co
 
 func frontendOrigin() string {
 	return valueOrDefault("FRONTEND_ORIGIN", "http://localhost:5173")
+}
+
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

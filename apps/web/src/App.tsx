@@ -35,11 +35,14 @@ import VideocamOutlined from "@mui/icons-material/VideocamOutlined";
 import VideocamRounded from "@mui/icons-material/VideocamRounded";
 import {
   clearStoredToken,
+  addUsersToChatRoom,
+  createChatRoom,
   createComment,
   createPost,
   fetchCurrentUser,
   fetchChatContacts,
   fetchChatMessages,
+  fetchChatUsers,
   fetchComments,
   fetchFeed,
   fetchHealth,
@@ -56,6 +59,7 @@ import {
   type AuthUser,
   type ChatContact,
   type ChatMessage,
+  type ChatUser,
   type Comment,
   type FeedPost,
   type HealthResponse,
@@ -354,6 +358,7 @@ function HomeApp({
   const [activeTab, setActiveTab] = useState<HomeTab>("home");
   const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatUsers, setChatUsers] = useState<ChatUser[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [feedError, setFeedError] = useState("");
   const [followCounts, setFollowCounts] = useState<Record<string, number>>({});
@@ -380,17 +385,19 @@ function HomeApp({
     setLoading(true);
     setFeedError("");
     try {
-      const [feed, nextLiveIndex, nextProfile, nextContacts] = await Promise.all([
+      const [feed, nextLiveIndex, nextProfile, nextContacts, nextChatUsers] = await Promise.all([
         fetchFeed(),
         fetchLiveIndex(),
         fetchProfile(),
         fetchChatContacts(),
+        fetchChatUsers(),
       ]);
       setLiveRooms(feed.liveRooms);
       setPosts(feed.posts);
       setLiveIndex(nextLiveIndex);
       setProfile(nextProfile);
       setChatContacts(nextContacts);
+      setChatUsers(nextChatUsers);
 
       const nextThreadId = nextContacts.some((contact) => contact.id === selectedThreadId)
         ? selectedThreadId
@@ -472,6 +479,26 @@ function HomeApp({
     setChatMessages(await fetchChatMessages(contactId));
   }
 
+  async function createDirectChat(participantId: number) {
+    const room = await createChatRoom({ type: "direct", participantIds: [participantId] });
+    setChatContacts(await fetchChatContacts());
+    await openThread(room.id);
+  }
+
+  async function createGroupChat(title: string, participantIds: number[]) {
+    const room = await createChatRoom({ type: "group", title, participantIds });
+    setChatContacts(await fetchChatContacts());
+    await openThread(room.id);
+  }
+
+  async function addUsersToSelectedChat(participantIds: number[]) {
+    if (!selectedThreadId) {
+      return;
+    }
+    await addUsersToChatRoom({ roomId: selectedThreadId, participantIds });
+    setChatContacts(await fetchChatContacts());
+  }
+
   async function sendMessage(body: string) {
     if (!selectedThreadId) {
       return;
@@ -537,8 +564,12 @@ function HomeApp({
 
         {activeTab === "messages" ? (
           <SearchMessages
+            chatUsers={chatUsers}
             contacts={chatContacts}
             messages={chatMessages}
+            onAddUsersToRoom={addUsersToSelectedChat}
+            onCreateDirectChat={createDirectChat}
+            onCreateGroupChat={createGroupChat}
             onOpenProfile={() => changeTab("profiles")}
             onOpenThread={openThread}
             onSendMessage={sendMessage}
@@ -1274,18 +1305,26 @@ function StreamList({ title, rooms, onOpenStream }: { title: string; rooms: Live
 }
 
 function SearchMessages({
+  chatUsers,
   contacts,
   isFollowing,
   messages,
+  onAddUsersToRoom,
+  onCreateDirectChat,
+  onCreateGroupChat,
   onOpenProfile,
   onOpenThread,
   onSendMessage,
   onToggleFollow,
   selectedThreadId,
 }: {
+  chatUsers: ChatUser[];
   contacts: ChatContact[];
   isFollowing: (name: string) => boolean;
   messages: ChatMessage[];
+  onAddUsersToRoom: (participantIds: number[]) => Promise<void>;
+  onCreateDirectChat: (participantId: number) => Promise<void>;
+  onCreateGroupChat: (title: string, participantIds: number[]) => Promise<void>;
   onOpenProfile: () => void;
   onOpenThread: (contactId: string) => Promise<void>;
   onSendMessage: (body: string) => Promise<void>;
@@ -1293,16 +1332,68 @@ function SearchMessages({
   selectedThreadId: string;
 }) {
   const [search, setSearch] = useState("");
+  const [activeChatTab, setActiveChatTab] = useState<"Chats" | "Groups" | "Pinned">("Chats");
+  const [groupTitle, setGroupTitle] = useState("Creator circle");
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [savingRoom, setSavingRoom] = useState(false);
   const activeContact = contacts.find((contact) => contact.id === selectedThreadId);
   const visibleContacts = contacts.filter((contact) => {
     const query = search.trim().toLowerCase();
-    return !query || contact.name.toLowerCase().includes(query) || (contact.subtitle ?? "").toLowerCase().includes(query);
+    const matchesQuery = !query || contact.name.toLowerCase().includes(query) || (contact.subtitle ?? "").toLowerCase().includes(query);
+    if (!matchesQuery) {
+      return false;
+    }
+    if (activeChatTab === "Groups") {
+      return contact.type === "group";
+    }
+    if (activeChatTab === "Pinned") {
+      return contacts.indexOf(contact) < 3;
+    }
+    return true;
   });
   const tabs = [
-    { label: "Pinned", count: 0 },
-    { label: "Chats", count: visibleContacts.length, active: true },
-    { label: "Groups", count: 8 },
+    { label: "Pinned" as const, count: contacts.slice(0, 3).length },
+    { label: "Chats" as const, count: contacts.length },
+    { label: "Groups" as const, count: contacts.filter((contact) => contact.type === "group").length },
   ];
+  const availableUsers = chatUsers.filter((user) => !activeContact?.participants.some((participant) => participant.id === user.id));
+  const selectedUsers = chatUsers.filter((user) => selectedUserIds.includes(user.id));
+
+  function toggleSelectedUser(userId: number) {
+    setSelectedUserIds((current) => (
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId]
+    ));
+  }
+
+  async function submitGroupRoom() {
+    if (selectedUserIds.length < 2) {
+      return;
+    }
+    setSavingRoom(true);
+    try {
+      await onCreateGroupChat(groupTitle, selectedUserIds);
+      setSelectedUserIds([]);
+      setGroupTitle("Creator circle");
+      setActiveChatTab("Groups");
+    } finally {
+      setSavingRoom(false);
+    }
+  }
+
+  async function addSelectedUsersToRoom() {
+    if (!selectedUserIds.length || activeContact?.type !== "group") {
+      return;
+    }
+    setSavingRoom(true);
+    try {
+      await onAddUsersToRoom(selectedUserIds);
+      setSelectedUserIds([]);
+    } finally {
+      setSavingRoom(false);
+    }
+  }
 
   return (
     <section className="search-panel">
@@ -1345,16 +1436,53 @@ function SearchMessages({
                 <Chip
                   key={tab.label}
                   label={`${tab.label}${tab.count ? ` ${tab.count}` : ""}`}
+                  onClick={() => setActiveChatTab(tab.label)}
                   sx={{
                     borderRadius: "999px",
                     fontWeight: 800,
-                    color: tab.active ? "var(--text-dark)" : "var(--text-3)",
-                    background: tab.active ? "linear-gradient(135deg, #49d17d, #84f7a5)" : "var(--surface-3)",
-                    border: tab.active ? "none" : "1px solid var(--line-soft)",
+                    color: activeChatTab === tab.label ? "var(--text-dark)" : "var(--text-3)",
+                    background: activeChatTab === tab.label ? "linear-gradient(135deg, #49d17d, #84f7a5)" : "var(--surface-3)",
+                    border: activeChatTab === tab.label ? "none" : "1px solid var(--line-soft)",
+                    cursor: "pointer",
                   }}
                 />
               ))}
             </div>
+
+            <Paper elevation={0} sx={{ mt: 2, p: 1.5, borderRadius: "22px", background: "rgba(73,209,125,0.08)", border: "1px solid rgba(73,209,125,0.18)" }}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <strong className="text-sm">Start a room</strong>
+                <small className="text-[color:var(--text-3)]">{selectedUsers.length} selected</small>
+              </div>
+              <InputBase
+                fullWidth
+                placeholder="Group name"
+                sx={{ mb: 1, px: 1.5, py: 0.5, borderRadius: "14px", color: "var(--text-1)", background: "var(--surface-3)" }}
+                value={groupTitle}
+                onChange={(event) => setGroupTitle(event.target.value)}
+              />
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {chatUsers.slice(0, 8).map((user) => (
+                  <button
+                    className={`min-w-[72px] rounded-[18px] border px-2 py-2 text-center text-xs font-bold ${selectedUserIds.includes(user.id) ? "border-[#49d17d] bg-[#49d17d]/20 text-white" : "border-[color:var(--line-soft)] bg-[color:var(--surface-3)] text-[color:var(--text-3)]"}`}
+                    key={user.id}
+                    type="button"
+                    onClick={() => toggleSelectedUser(user.id)}
+                  >
+                    <Avatar src={profileImageFor(user.name)} sx={{ width: 34, height: 34, mx: "auto", mb: 0.5 }} />
+                    <span className="block truncate">{firstName(user.name)}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Button disabled={savingRoom || selectedUserIds.length < 1} onClick={() => selectedUserIds[0] ? void onCreateDirectChat(selectedUserIds[0]) : undefined} sx={{ flex: 1, borderRadius: "14px", color: "var(--text-1)", borderColor: "var(--line-soft)" }} variant="outlined">
+                  Direct
+                </Button>
+                <Button disabled={savingRoom || selectedUserIds.length < 2} onClick={() => void submitGroupRoom()} sx={{ flex: 1, borderRadius: "14px", color: "#07130d", background: "#49d17d" }} variant="contained">
+                  Group
+                </Button>
+              </div>
+            </Paper>
 
             <div className="mt-4 space-y-3">
               {visibleContacts.map((contact) => (
@@ -1370,7 +1498,8 @@ function SearchMessages({
                           <strong className="block truncate text-sm">{contact.name}</strong>
                           <small className="shrink-0 text-[11px] text-[color:var(--text-3)]">25m</small>
                         </span>
-                        <small className="block truncate text-xs text-[color:var(--text-3)]">{contact.lastBody || contact.subtitle}</small>
+                          <small className="block truncate text-xs text-[color:var(--text-3)]">{contact.type === "group" ? `${contact.participantCount} members` : contact.subtitle}</small>
+                          <small className="block truncate text-xs text-[color:var(--text-3)]">{contact.lastBody || "No messages yet"}</small>
                       </span>
                     </button>
                     <div className="flex flex-col items-end gap-2">
@@ -1391,7 +1520,9 @@ function SearchMessages({
                 <Avatar src={profileImageFor(activeContact?.name ?? "chat")} sx={{ width: 58, height: 58 }} />
                 <div>
                   <h2 className="m-0 text-xl font-black">{activeContact?.name ?? "Chat"}</h2>
-                  <p className="m-0 text-sm text-white/50">{activeContact?.subtitle ?? "Direct conversation"}</p>
+                  <p className="m-0 text-sm text-white/50">
+                    {activeContact?.type === "group" ? `${activeContact.participantCount} members` : activeContact?.subtitle ?? "Direct conversation"}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -1406,6 +1537,31 @@ function SearchMessages({
                 </IconButton>
               </div>
             </div>
+
+            {activeContact?.type === "group" ? (
+              <Paper elevation={0} sx={{ mt: 3, p: 1.5, borderRadius: "22px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <strong className="text-sm">Add people</strong>
+                  <small className="text-white/45">{activeContact.participants.map((participant) => firstName(participant.name)).join(", ")}</small>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-2">
+                  {availableUsers.slice(0, 8).map((user) => (
+                    <button
+                      className={`min-w-[72px] rounded-[18px] border px-2 py-2 text-center text-xs font-bold ${selectedUserIds.includes(user.id) ? "border-[#49d17d] bg-[#49d17d]/20 text-white" : "border-white/10 bg-white/5 text-white/60"}`}
+                      key={user.id}
+                      type="button"
+                      onClick={() => toggleSelectedUser(user.id)}
+                    >
+                      <Avatar src={profileImageFor(user.name)} sx={{ width: 32, height: 32, mx: "auto", mb: 0.5 }} />
+                      <span className="block truncate">{firstName(user.name)}</span>
+                    </button>
+                  ))}
+                </div>
+                <Button disabled={savingRoom || selectedUserIds.length === 0} onClick={() => void addSelectedUsersToRoom()} sx={{ borderRadius: "14px", color: "#07130d", background: "#49d17d" }} variant="contained">
+                  Add to group
+                </Button>
+              </Paper>
+            ) : null}
 
             <div className="mt-4 rounded-[28px] border border-white/6 bg-black/10 p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white/40">
@@ -1504,98 +1660,75 @@ function ProfilePanel({
   profile: ProfileResponse | null;
   user: AuthUser;
 }) {
-  const profilePosts = posts.slice(0, 4);
-  const streak = 7 + (posts.length % 5);
+  const profilePosts = posts.slice(0, 9);
+  const coverImage = profilePosts[0]?.gallery[0] ?? postImageFor(user.id);
+  const handle = `@${user.name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}`;
 
   return (
     <section className="profile-panel">
       <Fade in timeout={450}>
-        <div className="mx-auto grid min-h-[calc(100vh-96px)] max-w-6xl gap-4 lg:grid-cols-[minmax(0,1.35fr),360px]">
-          <div className="space-y-4">
-            <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, borderRadius: "32px", background: "linear-gradient(180deg, color-mix(in srgb, var(--surface-1) 82%, transparent), color-mix(in srgb, var(--surface-3) 92%, transparent))", color: "var(--text-1)", border: "1px solid var(--line-soft)" }}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-4">
-                  <Badge overlap="circular" badgeContent={<AutoAwesomeRounded sx={{ fontSize: 14, color: "#fff" }} />} color="primary">
-                    <Avatar src={profileImageFor(user.name)} sx={{ width: 96, height: 96, border: "3px solid color-mix(in srgb, var(--accent) 45%, transparent)" }} />
-                  </Badge>
-                  <div>
-                    <h1 className="text-2xl font-black md:text-3xl">{user.name}</h1>
-                    <p className="mt-1 text-sm font-semibold text-[color:var(--text-3)]">{profile?.headline || "Digital creator"}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Chip icon={<GroupsRounded />} label={`${compactNumber(followersCount)} followers`} sx={{ color: "var(--text-1)", background: "var(--chip-bg)", border: "1px solid var(--line-soft)" }} />
-                      <Chip icon={<FavoriteRounded />} label={`${streak} day streak`} sx={{ color: "var(--text-1)", background: "var(--chip-bg)", border: "1px solid var(--line-soft)" }} />
-                    </div>
-                  </div>
-                </div>
-                <IconButton className="!text-[color:var(--accent)]" onClick={onOpenSettings}>
+        <div className="mx-auto min-h-[calc(100vh-96px)] max-w-5xl">
+          <Paper elevation={0} sx={{ overflow: "hidden", borderRadius: "34px", background: "#07090f", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="relative min-h-[430px]">
+              <img alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" src={coverImage} />
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,9,15,0.08),rgba(7,9,15,0.7)_58%,#07090f_100%)]" />
+              <div className="relative z-10 flex justify-between p-5">
+                <IconButton className="!bg-black/25 !text-white backdrop-blur" onClick={onOpenSettings}>
                   <SettingsRounded />
+                </IconButton>
+                <IconButton className="!bg-black/25 !text-white backdrop-blur" onClick={onLogout}>
+                  <PersonRemoveRounded />
                 </IconButton>
               </div>
 
-              <EmojiText className="mt-5 block max-w-3xl text-sm leading-7 text-[color:var(--text-2)]" text={profile?.bio || "Shape your creator identity, publish drops, and keep your audience close. :sparkles:"} />
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <Paper elevation={0} sx={{ p: 1.75, borderRadius: "22px", background: "var(--surface-2)", border: "1px solid var(--line-soft)" }}>
-                  <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Posts</p>
-                  <strong className="mt-2 block text-xl">{posts.length}</strong>
-                </Paper>
-                <Paper elevation={0} sx={{ p: 1.75, borderRadius: "22px", background: "var(--surface-2)", border: "1px solid var(--line-soft)" }}>
-                  <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Following</p>
-                  <strong className="mt-2 block text-xl">{followingCount}</strong>
-                </Paper>
-                <Paper elevation={0} sx={{ p: 1.75, borderRadius: "22px", background: "var(--surface-2)", border: "1px solid var(--line-soft)" }}>
-                  <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Service</p>
-                  <strong className="mt-2 block text-xl">{health?.status === "ok" ? "Live" : "Syncing"}</strong>
-                </Paper>
+              <div className="absolute inset-x-0 bottom-0 z-10 px-5 pb-6 text-center">
+                <Badge overlap="circular" badgeContent={<AutoAwesomeRounded sx={{ fontSize: 14, color: "#fff" }} />} color="primary">
+                  <Avatar src={profileImageFor(user.name)} sx={{ width: 118, height: 118, mx: "auto", border: "4px solid #fff", boxShadow: "0 22px 60px rgba(0,0,0,0.42)" }} />
+                </Badge>
+                <h1 className="mt-3 text-3xl font-black md:text-4xl">{user.name}</h1>
+                <p className="m-0 text-sm font-bold text-white/65">{handle}</p>
+                <EmojiText className="mx-auto mt-3 block max-w-xl text-sm leading-6 text-white/70" text={profile?.bio || profile?.headline || "Creator stories, live drops, and studio updates. :sparkles:"} />
               </div>
-            </Paper>
+            </div>
 
-            <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, borderRadius: "32px", background: "var(--panel-elevated)", color: "var(--text-1)", border: "1px solid var(--line-soft)" }}>
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Portfolio</p>
-                  <h2 className="mt-1 text-xl font-black">Photos, videos, and promoted drops</h2>
-                </div>
-                <Button onClick={onOpenSettings} sx={{ borderRadius: "999px", color: "#fff", px: 2, background: "linear-gradient(135deg, var(--accent), var(--accent-2))" }} variant="contained">
-                  Edit profile
-                </Button>
+            <div className="border-y border-white/10 px-4 py-5">
+              <div className="mx-auto grid max-w-xl grid-cols-3 text-center">
+                <span><strong className="block text-xl">{posts.length}</strong><small className="text-white/50">Posts</small></span>
+                <span><strong className="block text-xl">{compactNumber(followersCount)}</strong><small className="text-white/50">Followers</small></span>
+                <span><strong className="block text-xl">{followingCount}</strong><small className="text-white/50">Following</small></span>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {profilePosts.map((post, index) => (
-                  <div className={`group relative overflow-hidden rounded-[26px] border border-[color:var(--line-soft)] ${index === 0 ? "sm:col-span-2" : ""}`} key={post.id}>
-                    <img alt="" className={`h-full w-full object-cover transition duration-500 group-hover:scale-105 ${index === 0 ? "aspect-[1.8/1]" : "aspect-square"}`} src={post.gallery[0]} />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white">
-                      <p className="m-0 text-sm font-black">{post.mood}</p>
-                      <p className="m-0 mt-1 text-xs text-white/75">{post.promotionScore}% trend score</p>
-                    </div>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-2 px-5 py-4">
+              <Button onClick={onOpenSettings} sx={{ borderRadius: "999px", color: "#07090f", px: 3, background: "#fff", fontWeight: 900 }} variant="contained">
+                Edit profile
+              </Button>
+              <IconButton className="!border !border-white/10 !bg-white/10 !text-white">
+                <PersonAddAlt1Rounded />
+              </IconButton>
+              <IconButton className="!border !border-white/10 !bg-white/10 !text-white">
+                <NorthEastRounded />
+              </IconButton>
+              <Chip label={health?.status === "ok" ? "Live" : "Syncing"} sx={{ color: "#fff", background: "rgba(255,255,255,0.1)", fontWeight: 800 }} />
+            </div>
+
+            <nav className="grid grid-cols-3 border-b border-white/10 text-center text-white/45">
+              <button className="border-b-2 border-white py-3 text-white" type="button"><PlayCircleRounded fontSize="small" /></button>
+              <button className="py-3" type="button"><FavoriteRounded fontSize="small" /></button>
+              <button className="py-3" type="button"><GroupsRounded fontSize="small" /></button>
+            </nav>
+
+            <div className="grid grid-cols-3 gap-0.5 bg-black">
+              {profilePosts.map((post, index) => (
+                <button className="group relative aspect-[0.78] overflow-hidden bg-zinc-950 text-left" key={post.id} type="button">
+                  <img alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" src={post.gallery[0]} />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-2 text-white">
+                    <span className="flex items-center gap-1 text-[11px] font-black"><PlayCircleRounded sx={{ fontSize: 13 }} />{compactNumber(9000 + post.promotionScore * (index + 5))}</span>
                   </div>
-                ))}
-              </div>
-            </Paper>
-          </div>
-
-          <div className="space-y-4">
-            <Paper elevation={0} sx={{ p: 2.5, borderRadius: "30px", background: "var(--panel-elevated)", color: "var(--text-1)", border: "1px solid var(--line-soft)" }}>
-              <p className="m-0 text-xs font-black uppercase tracking-[0.16em] text-[color:var(--text-3)]">Creator pulse</p>
-              <div className="mt-4 space-y-4">
-                <div>
-                  <div className="mb-2 flex items-center justify-between text-sm font-semibold">
-                    <span>Audience warmth</span>
-                    <span>{Math.min(96, 74 + posts.length)}%</span>
-                  </div>
-                  <LinearProgress sx={{ height: 10, borderRadius: "999px", background: "rgba(255,255,255,0.08)", "& .MuiLinearProgress-bar": { borderRadius: "999px", background: "linear-gradient(135deg, var(--accent), var(--accent-2))" } }} value={Math.min(96, 74 + posts.length)} variant="determinate" />
-                </div>
-                <div className="rounded-[24px] border border-[color:var(--line-soft)] bg-[color:var(--surface-3)] p-4">
-                  <p className="m-0 text-sm font-bold">Profile flow</p>
-                  <p className="m-0 mt-1 text-sm text-[color:var(--text-3)]">Responsive cards, smoother transitions, and stronger hierarchy now anchor the profile experience.</p>
-                </div>
-              </div>
-            </Paper>
-
-            <Button className="!rounded-[18px]" fullWidth onClick={onLogout} sx={{ minHeight: 52, color: "var(--accent)", background: "var(--chip-bg)", border: "1px solid var(--line-soft)" }}>
-              Sign out
-            </Button>
-          </div>
+                </button>
+              ))}
+            </div>
+          </Paper>
         </div>
       </Fade>
     </section>

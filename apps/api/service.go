@@ -136,33 +136,65 @@ func (s *DataService) EnsureUserRecords(ctx context.Context, userID int64) error
 	}
 
 	starterMessages := []struct {
-		ContactID string
-		Name      string
-		Body      string
-		Minutes   int
+		Email   string
+		Legacy  string
+		Body    string
+		Minutes int
 	}{
-		{"alejandro-hicks", "Alejandro Hicks", "I cleaned up the launch checklist. The offer page is ready when you are.", 64},
-		{"mika-studio", "Mika Studio", "Your live teardown room is picking up signups from the new feed.", 37},
-		{"noor-creates", "Noor Creates", "Send me the raw clips and I will turn the replay into a short-form batch.", 22},
+		{"alejandro@creators.local", "alejandro-hicks", "I cleaned up the launch checklist. The offer page is ready when you are.", 64},
+		{"mika@creators.local", "mika-studio", "Your live teardown room is picking up signups from the new feed.", 37},
+		{"noor@creators.local", "noor-creates", "Send me the raw clips and I will turn the replay into a short-form batch.", 22},
 	}
 
 	for _, message := range starterMessages {
+		contact, err := s.FindUserByEmail(ctx, message.Email)
+		if err != nil {
+			return err
+		}
+		roomID, err := s.ensureDirectRoom(ctx, userID, contact.ID, message.Legacy)
+		if err != nil {
+			return err
+		}
 		var exists bool
 		if err := s.Pool.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM chat_messages
-				WHERE user_id = $1 AND contact_id = $2
-			)
-		`, userID, message.ContactID).Scan(&exists); err != nil {
+			SELECT EXISTS (SELECT 1 FROM chat_room_messages WHERE room_id = $1)
+		`, roomID).Scan(&exists); err != nil {
 			return err
 		}
 		if exists {
 			continue
 		}
 		if _, err := s.Pool.Exec(ctx, `
-			INSERT INTO chat_messages (user_id, contact_id, sender_name, body, created_at)
-			VALUES ($1, $2, $3, $4, $5)
-		`, userID, message.ContactID, message.Name, message.Body, time.Now().Add(-time.Duration(message.Minutes)*time.Minute)); err != nil {
+			INSERT INTO chat_room_messages (room_id, sender_user_id, body, created_at)
+			VALUES ($1, $2, $3, $4)
+		`, roomID, contact.ID, message.Body, time.Now().Add(-time.Duration(message.Minutes)*time.Minute)); err != nil {
+			return err
+		}
+	}
+
+	groupID, err := s.ensureGroupRoom(ctx, userID, "Creator launch pod", []string{
+		"noor@creators.local",
+		"mika@creators.local",
+		"alejandro@creators.local",
+	})
+	if err != nil {
+		return err
+	}
+	var groupHasMessages bool
+	if err := s.Pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM chat_room_messages WHERE room_id = $1)
+	`, groupID).Scan(&groupHasMessages); err != nil {
+		return err
+	}
+	if !groupHasMessages {
+		author, err := s.FindUserByEmail(ctx, "alejandro@creators.local")
+		if err != nil {
+			return err
+		}
+		if _, err := s.Pool.Exec(ctx, `
+			INSERT INTO chat_room_messages (room_id, sender_user_id, body, created_at)
+			VALUES ($1, $2, $3, $4)
+		`, groupID, author.ID, "Group room is ready. Add whoever needs the launch context.", time.Now().Add(-11*time.Minute)); err != nil {
 			return err
 		}
 	}
@@ -579,23 +611,45 @@ func (s *DataService) ListChatContacts(ctx context.Context, userID int64) ([]Cha
 
 	rows, err := s.Pool.Query(ctx, `
 		WITH latest AS (
-			SELECT DISTINCT ON (contact_id)
-				contact_id,
+			SELECT DISTINCT ON (room_id)
+				room_id,
 				body,
 				created_at
-			FROM chat_messages
-			WHERE user_id = $1
-			ORDER BY contact_id, created_at DESC, id DESC
+			FROM chat_room_messages
+			ORDER BY room_id, created_at DESC, id DESC
 		)
 		SELECT
-			c.id,
-			c.name,
-			c.subtitle,
+			r.id::text,
+			r.type,
+			CASE
+				WHEN r.type = 'direct' THEN COALESCE(other_user.name, r.title, 'Direct chat')
+				ELSE r.title
+			END AS name,
+			CASE
+				WHEN r.type = 'direct' THEN COALESCE(NULLIF(other_profile.headline, ''), 'Direct chat')
+				ELSE CONCAT(participant_counts.count, ' members')
+			END AS subtitle,
 			COALESCE(latest.body, ''),
-			COALESCE(latest.created_at, c.updated_at)
-		FROM chat_contacts c
-		LEFT JOIN latest ON latest.contact_id = c.id
-		ORDER BY (latest.created_at IS NULL), COALESCE(latest.created_at, c.updated_at) DESC, c.name ASC
+			COALESCE(latest.created_at, r.updated_at),
+			participant_counts.count
+		FROM chat_rooms r
+		JOIN chat_room_participants me ON me.room_id = r.id AND me.user_id = $1
+		LEFT JOIN latest ON latest.room_id = r.id
+		LEFT JOIN LATERAL (
+			SELECT u.id, u.name, u.email
+			FROM chat_room_participants p
+			JOIN users u ON u.id = p.user_id
+			WHERE p.room_id = r.id AND p.user_id <> $1
+			ORDER BY u.name
+			LIMIT 1
+		) other_user ON true
+		LEFT JOIN user_profiles other_profile ON other_profile.user_id = other_user.id
+		JOIN LATERAL (
+			SELECT COUNT(*)::int AS count
+			FROM chat_room_participants p
+			WHERE p.room_id = r.id
+		) participant_counts ON true
+		ORDER BY (latest.created_at IS NULL), COALESCE(latest.created_at, r.updated_at) DESC, name ASC
 	`, userID)
 	if err != nil {
 		return nil, err
@@ -606,43 +660,79 @@ func (s *DataService) ListChatContacts(ctx context.Context, userID int64) ([]Cha
 	for rows.Next() {
 		var contact ChatContact
 		var updatedAt time.Time
-		if err := rows.Scan(&contact.ID, &contact.Name, &contact.Subtitle, &contact.LastBody, &updatedAt); err != nil {
+		if err := rows.Scan(&contact.ID, &contact.Type, &contact.Name, &contact.Subtitle, &contact.LastBody, &updatedAt, &contact.ParticipantCount); err != nil {
 			return nil, err
 		}
 		contact.UpdatedAt = updatedAt.UTC().Format(time.RFC3339)
+		participants, err := s.ListChatParticipants(ctx, contact.ID)
+		if err != nil {
+			return nil, err
+		}
+		contact.Participants = participants
 		contacts = append(contacts, contact)
 	}
 	return contacts, rows.Err()
 }
 
-func (s *DataService) ListChatMessages(ctx context.Context, userID int64, contactID string) ([]ChatMessage, error) {
-	contactID = strings.TrimSpace(contactID)
-	if contactID == "" {
-		return nil, errors.New("contactId is required")
+func (s *DataService) ListChatParticipants(ctx context.Context, roomID string) ([]ChatParticipant, error) {
+	roomNumber, err := parseRoomID(roomID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.Pool.Query(ctx, `
+		SELECT u.id, u.name, u.email
+		FROM chat_room_participants p
+		JOIN users u ON u.id = p.user_id
+		WHERE p.room_id = $1
+		ORDER BY p.role = 'owner' DESC, u.name ASC
+	`, roomNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	participants := make([]ChatParticipant, 0)
+	for rows.Next() {
+		var participant ChatParticipant
+		if err := rows.Scan(&participant.ID, &participant.Name, &participant.Email); err != nil {
+			return nil, err
+		}
+		participants = append(participants, participant)
+	}
+	return participants, rows.Err()
+}
+
+func (s *DataService) ListChatMessages(ctx context.Context, userID int64, roomID string) ([]ChatMessage, error) {
+	roomNumber, err := parseRoomID(roomID)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.EnsureUserRecords(ctx, userID); err != nil {
 		return nil, err
 	}
-
-	currentUser, err := s.FindUserByID(ctx, userID)
-	if err != nil {
+	if err := s.ensureRoomMembership(ctx, roomNumber, userID); err != nil {
 		return nil, err
 	}
 
 	rows, err := s.Pool.Query(ctx, `
 		SELECT
 			m.id,
-			m.contact_id,
+			m.room_id::text,
 			m.body,
 			m.created_at,
 			COALESCE(m.sender_user_id = $1, false) AS own,
-			COALESCE(c.name, m.sender_name, 'Creator') AS contact_name,
-			COALESCE(m.sender_name, c.name, 'Creator') AS sender_name
-		FROM chat_messages m
-		LEFT JOIN chat_contacts c ON c.id = m.contact_id
-		WHERE m.user_id = $1 AND m.contact_id = $2
+			u.id,
+			u.email,
+			u.name,
+			u.provider,
+			u.password_hash,
+			u.created_at
+		FROM chat_room_messages m
+		JOIN users u ON u.id = m.sender_user_id
+		WHERE m.room_id = $2
 		ORDER BY m.created_at ASC, m.id ASC
-	`, userID, contactID)
+	`, userID, roomNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -653,22 +743,24 @@ func (s *DataService) ListChatMessages(ctx context.Context, userID int64, contac
 		var message ChatMessage
 		var createdAt time.Time
 		var own bool
-		var contactName string
-		var senderName string
-		if err := rows.Scan(&message.ID, &message.ContactID, &message.Body, &createdAt, &own, &contactName, &senderName); err != nil {
+		var sender User
+		if err := rows.Scan(
+			&message.ID,
+			&message.RoomID,
+			&message.Body,
+			&createdAt,
+			&own,
+			&sender.ID,
+			&sender.Email,
+			&sender.Name,
+			&sender.Provider,
+			&sender.PasswordHash,
+			&sender.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
-		if own {
-			message.Sender = toAuthUser(currentUser)
-		} else {
-			message.Sender = AuthUser{
-				ID:        0,
-				Email:     "",
-				Name:      firstNonEmpty(senderName, contactName),
-				Provider:  "contact",
-				CreatedAt: createdAt.UTC().Format(time.RFC3339),
-			}
-		}
+		message.ContactID = message.RoomID
+		message.Sender = toAuthUser(sender)
 		message.Own = own
 		message.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 		messages = append(messages, message)
@@ -676,45 +768,36 @@ func (s *DataService) ListChatMessages(ctx context.Context, userID int64, contac
 	return messages, rows.Err()
 }
 
-func (s *DataService) SendChatMessage(ctx context.Context, userID int64, contactID string, body string) (ChatMessage, error) {
-	contactID = strings.TrimSpace(contactID)
-	body = strings.TrimSpace(body)
-	if contactID == "" {
-		return ChatMessage{}, errors.New("contactId is required")
-	}
-	if body == "" {
-		return ChatMessage{}, errors.New("message body is required")
-	}
-
-	user, err := s.FindUserByID(ctx, userID)
+func (s *DataService) SendChatMessage(ctx context.Context, userID int64, roomID string, body string) (ChatMessage, error) {
+	roomNumber, err := parseRoomID(roomID)
 	if err != nil {
 		return ChatMessage{}, err
 	}
-	if _, err := s.Pool.Exec(ctx, `
-		INSERT INTO chat_contacts (id, name, subtitle)
-		VALUES ($1, $2, 'Direct chat')
-		ON CONFLICT (id) DO NOTHING
-	`, contactID, humanizeContactID(contactID)); err != nil {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return ChatMessage{}, errors.New("message body is required")
+	}
+	if err := s.ensureRoomMembership(ctx, roomNumber, userID); err != nil {
 		return ChatMessage{}, err
 	}
 
 	var id int64
 	if err := s.Pool.QueryRow(ctx, `
-		INSERT INTO chat_messages (user_id, contact_id, sender_user_id, sender_name, body)
-		VALUES ($1, $2, $1, $3, $4)
+		INSERT INTO chat_room_messages (room_id, sender_user_id, body)
+		VALUES ($1, $2, $3)
 		RETURNING id
-	`, userID, contactID, user.Name, body).Scan(&id); err != nil {
+	`, roomNumber, userID, body).Scan(&id); err != nil {
 		return ChatMessage{}, err
 	}
 	if _, err := s.Pool.Exec(ctx, `
-		UPDATE chat_contacts
+		UPDATE chat_rooms
 		SET updated_at = now()
 		WHERE id = $1
-	`, contactID); err != nil {
+	`, roomNumber); err != nil {
 		return ChatMessage{}, err
 	}
 
-	messages, err := s.ListChatMessages(ctx, userID, contactID)
+	messages, err := s.ListChatMessages(ctx, userID, roomID)
 	if err != nil {
 		return ChatMessage{}, err
 	}
@@ -726,32 +809,288 @@ func (s *DataService) SendChatMessage(ctx context.Context, userID int64, contact
 	return ChatMessage{}, pgx.ErrNoRows
 }
 
+func (s *DataService) ListChatUsers(ctx context.Context, currentUserID int64) ([]ChatUser, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT u.id, u.name, u.email, COALESCE(NULLIF(p.headline, ''), 'Creator') AS headline
+		FROM users u
+		LEFT JOIN user_profiles p ON p.user_id = u.id
+		WHERE u.id <> $1
+		ORDER BY
+			CASE WHEN u.provider = 'seed' THEN 0 ELSE 1 END,
+			u.name ASC
+		LIMIT 30
+	`, currentUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]ChatUser, 0)
+	for rows.Next() {
+		var user ChatUser
+		if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Headline); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func (s *DataService) CreateChatRoom(ctx context.Context, userID int64, roomType string, title string, participantIDs []int64) (ChatContact, error) {
+	roomType = strings.TrimSpace(roomType)
+	title = strings.TrimSpace(title)
+	participantIDs = uniqueIDs(participantIDs, userID)
+
+	if roomType == "" {
+		roomType = "direct"
+	}
+	if roomType != "direct" && roomType != "group" {
+		return ChatContact{}, errors.New("chat room type must be direct or group")
+	}
+	if roomType == "direct" && len(participantIDs) != 2 {
+		return ChatContact{}, errors.New("direct chats need exactly one other user")
+	}
+	if roomType == "group" && len(participantIDs) < 3 {
+		return ChatContact{}, errors.New("group chats need at least two other users")
+	}
+	if roomType == "group" && title == "" {
+		title = "New group"
+	}
+
+	var roomID int64
+	if roomType == "direct" {
+		otherID := participantIDs[0]
+		if otherID == userID {
+			otherID = participantIDs[1]
+		}
+		var err error
+		roomID, err = s.ensureDirectRoomByID(ctx, userID, otherID, "")
+		if err != nil {
+			return ChatContact{}, err
+		}
+	} else {
+		err := s.Pool.QueryRow(ctx, `
+			INSERT INTO chat_rooms (type, title, created_by)
+			VALUES ('group', $1, $2)
+			RETURNING id
+		`, title, userID).Scan(&roomID)
+		if err != nil {
+			return ChatContact{}, err
+		}
+		for _, participantID := range participantIDs {
+			role := "member"
+			if participantID == userID {
+				role = "owner"
+			}
+			if _, err := s.Pool.Exec(ctx, `
+				INSERT INTO chat_room_participants (room_id, user_id, role)
+				VALUES ($1, $2, $3)
+				ON CONFLICT (room_id, user_id) DO NOTHING
+			`, roomID, participantID, role); err != nil {
+				return ChatContact{}, err
+			}
+		}
+	}
+
+	rooms, err := s.ListChatContacts(ctx, userID)
+	if err != nil {
+		return ChatContact{}, err
+	}
+	roomKey := fmt.Sprint(roomID)
+	for _, room := range rooms {
+		if room.ID == roomKey {
+			return room, nil
+		}
+	}
+	return ChatContact{}, pgx.ErrNoRows
+}
+
+func (s *DataService) AddUsersToRoom(ctx context.Context, userID int64, roomID string, participantIDs []int64) (ChatContact, error) {
+	roomNumber, err := parseRoomID(roomID)
+	if err != nil {
+		return ChatContact{}, err
+	}
+	if err := s.ensureRoomMembership(ctx, roomNumber, userID); err != nil {
+		return ChatContact{}, err
+	}
+	var roomType string
+	if err := s.Pool.QueryRow(ctx, `SELECT type FROM chat_rooms WHERE id = $1`, roomNumber).Scan(&roomType); err != nil {
+		return ChatContact{}, err
+	}
+	if roomType != "group" {
+		return ChatContact{}, errors.New("users can only be added to group chats")
+	}
+
+	for _, participantID := range uniqueIDs(participantIDs) {
+		if participantID == userID {
+			continue
+		}
+		if _, err := s.Pool.Exec(ctx, `
+			INSERT INTO chat_room_participants (room_id, user_id, role)
+			VALUES ($1, $2, 'member')
+			ON CONFLICT (room_id, user_id) DO NOTHING
+		`, roomNumber, participantID); err != nil {
+			return ChatContact{}, err
+		}
+	}
+	if _, err := s.Pool.Exec(ctx, `UPDATE chat_rooms SET updated_at = now() WHERE id = $1`, roomNumber); err != nil {
+		return ChatContact{}, err
+	}
+
+	rooms, err := s.ListChatContacts(ctx, userID)
+	if err != nil {
+		return ChatContact{}, err
+	}
+	for _, room := range rooms {
+		if room.ID == roomID {
+			return room, nil
+		}
+	}
+	return ChatContact{}, pgx.ErrNoRows
+}
+
+func (s *DataService) ensureDirectRoom(ctx context.Context, userID int64, otherID int64, legacyContactID string) (int64, error) {
+	return s.ensureDirectRoomByID(ctx, userID, otherID, legacyContactID)
+}
+
+func (s *DataService) ensureDirectRoomByID(ctx context.Context, userID int64, otherID int64, legacyContactID string) (int64, error) {
+	if userID == otherID {
+		return 0, errors.New("direct chat requires another user")
+	}
+
+	key := directKey(userID, otherID)
+	var roomID int64
+	err := s.Pool.QueryRow(ctx, `
+		INSERT INTO chat_rooms (type, title, created_by, direct_key, legacy_contact_id)
+		VALUES ('direct', '', $1, $2, NULLIF($3, ''))
+		ON CONFLICT (direct_key) DO UPDATE
+		SET legacy_contact_id = COALESCE(chat_rooms.legacy_contact_id, EXCLUDED.legacy_contact_id),
+			updated_at = chat_rooms.updated_at
+		RETURNING id
+	`, userID, key, legacyContactID).Scan(&roomID)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, participantID := range []int64{userID, otherID} {
+		role := "member"
+		if participantID == userID {
+			role = "owner"
+		}
+		if _, err := s.Pool.Exec(ctx, `
+			INSERT INTO chat_room_participants (room_id, user_id, role)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (room_id, user_id) DO NOTHING
+		`, roomID, participantID, role); err != nil {
+			return 0, err
+		}
+	}
+	return roomID, nil
+}
+
+func (s *DataService) ensureGroupRoom(ctx context.Context, userID int64, title string, participantEmails []string) (int64, error) {
+	var roomID int64
+	err := s.Pool.QueryRow(ctx, `
+		SELECT r.id
+		FROM chat_rooms r
+		JOIN chat_room_participants p ON p.room_id = r.id AND p.user_id = $2
+		WHERE r.type = 'group' AND r.title = $1
+		LIMIT 1
+	`, title, userID).Scan(&roomID)
+	if err == nil {
+		return roomID, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, err
+	}
+
+	if err := s.Pool.QueryRow(ctx, `
+		INSERT INTO chat_rooms (type, title, created_by)
+		VALUES ('group', $1, $2)
+		RETURNING id
+	`, title, userID).Scan(&roomID); err != nil {
+		return 0, err
+	}
+	if _, err := s.Pool.Exec(ctx, `
+		INSERT INTO chat_room_participants (room_id, user_id, role)
+		VALUES ($1, $2, 'owner')
+		ON CONFLICT (room_id, user_id) DO NOTHING
+	`, roomID, userID); err != nil {
+		return 0, err
+	}
+	for _, email := range participantEmails {
+		user, err := s.FindUserByEmail(ctx, email)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := s.Pool.Exec(ctx, `
+			INSERT INTO chat_room_participants (room_id, user_id, role)
+			VALUES ($1, $2, 'member')
+			ON CONFLICT (room_id, user_id) DO NOTHING
+		`, roomID, user.ID); err != nil {
+			return 0, err
+		}
+	}
+	return roomID, nil
+}
+
+func (s *DataService) ensureRoomMembership(ctx context.Context, roomID int64, userID int64) error {
+	var exists bool
+	if err := s.Pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM chat_room_participants
+			WHERE room_id = $1 AND user_id = $2
+		)
+	`, roomID, userID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("chat room not found")
+	}
+	return nil
+}
+
+func parseRoomID(value string) (int64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, errors.New("roomId is required")
+	}
+	var parsed int64
+	if _, err := fmt.Sscan(value, &parsed); err != nil || parsed <= 0 {
+		return 0, errors.New("roomId is invalid")
+	}
+	return parsed, nil
+}
+
+func directKey(left int64, right int64) string {
+	if left > right {
+		left, right = right, left
+	}
+	return fmt.Sprintf("%d:%d", left, right)
+}
+
+func uniqueIDs(values []int64, required ...int64) []int64 {
+	seen := map[int64]struct{}{}
+	result := make([]int64, 0, len(values)+len(required))
+	for _, value := range append(values, required...) {
+		if value <= 0 {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func validEmail(email string) bool {
 	return strings.Contains(email, "@") && strings.Contains(email, ".") && !strings.ContainsAny(email, " \t\r\n")
-}
-
-func humanizeContactID(contactID string) string {
-	parts := strings.Fields(strings.ReplaceAll(contactID, "-", " "))
-	if len(parts) == 0 {
-		return "Direct Chat"
-	}
-	for index, part := range parts {
-		parts[index] = strings.ToUpper(part[:1]) + part[1:]
-	}
-	return strings.Join(parts, " ")
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func publicError(err error) string {

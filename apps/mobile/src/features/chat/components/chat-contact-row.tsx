@@ -74,7 +74,7 @@ export function ChatContactRow({
         </View>
 
         <Text numberOfLines={1} style={{ color: chatPalette.soft, fontSize: 13 }}>
-          {contact.lastBody || contact.subtitle}
+          {contact.lastBody || (contact.type === "group" ? `${contact.participantCount} members` : contact.subtitle)}
         </Text>
 
         <Text numberOfLines={1} style={{ color: statusColor, fontSize: 11, fontWeight: "800" as const }}>
@@ -105,7 +105,7 @@ export function ChatContactRow({
           </Text>
         </View>
         <Text style={{ color: chatPalette.soft, fontSize: 10, fontWeight: "800" as const }}>
-          {contact.subtitle}
+          {contact.type === "group" ? "Group" : contact.subtitle}
         </Text>
       </View>
     </Pressable>

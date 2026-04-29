@@ -4,6 +4,7 @@ import {
   type AuthUser,
   type ChatContact,
   type ChatMessage,
+  type ChatUser,
   type Comment,
   type FeedPost,
   type HealthResponse,
@@ -11,9 +12,12 @@ import {
   type LiveRating,
   type LiveRoom,
   type ProfileResponse,
+  addUsersToChatRoom,
+  createChatRoom,
   createComment,
   fetchChatContacts,
   fetchChatMessages,
+  fetchChatUsers,
   fetchComments,
   fetchCurrentUser,
   fetchFeed,
@@ -34,6 +38,7 @@ type AppContextValue = {
   activeChatId: string;
   chatContacts: ChatContact[];
   chatMessages: ChatMessage[];
+  chatUsers: ChatUser[];
   comments: Comment[];
   displayPosts: DisplayPost[];
   health: HealthResponse | null;
@@ -49,6 +54,9 @@ type AppContextValue = {
   signIn: (input: { email: string; password: string }) => Promise<void>;
   signOut: () => Promise<void>;
   signUp: (input: { name: string; email: string; password: string }) => Promise<void>;
+  createDirectChat: (participantId: number) => Promise<void>;
+  createGroupChat: (input: { title: string; participantIds: number[] }) => Promise<void>;
+  addUsersToActiveChat: (participantIds: number[]) => Promise<void>;
   loadThread: (contactId: string) => Promise<void>;
   sendMessage: (body: string) => Promise<void>;
   openLive: (room: LiveRoom) => void;
@@ -76,6 +84,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [activeChatId, setActiveChatId] = useState("");
   const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatUsers, setChatUsers] = useState<ChatUser[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [isBooting, setIsBooting] = useState(true);
@@ -119,12 +128,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     setIsLoading(true);
     try {
-      const [nextFeed, nextHealth, nextLive, nextProfile, nextContacts] = await Promise.all([
+      const [nextFeed, nextHealth, nextLive, nextProfile, nextContacts, nextChatUsers] = await Promise.all([
         fetchFeed(),
         fetchHealth().catch(() => null),
         fetchLiveIndex(),
         fetchProfile(),
         fetchChatContacts(),
+        fetchChatUsers(),
       ]);
       setLiveRooms(nextFeed.liveRooms);
       setPosts(nextFeed.posts);
@@ -132,6 +142,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setLiveIndex(nextLive);
       setProfile(nextProfile);
       setChatContacts(nextContacts);
+      setChatUsers(nextChatUsers);
       if (!selectedLiveId && nextFeed.liveRooms[0]) {
         setSelectedLiveId(null);
       }
@@ -173,6 +184,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setActiveChatId("");
     setChatContacts([]);
     setChatMessages([]);
+    setChatUsers([]);
     setComments([]);
     setLiveIndex(null);
     setLiveRooms([]);
@@ -183,6 +195,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function loadThread(contactId: string) {
     setActiveChatId(contactId);
     setChatMessages(await fetchChatMessages(contactId));
+  }
+
+  async function createDirectChat(participantId: number) {
+    const room = await createChatRoom({ type: "direct", participantIds: [participantId] });
+    setChatContacts(await fetchChatContacts());
+    await loadThread(room.id);
+  }
+
+  async function createGroupChat(input: { title: string; participantIds: number[] }) {
+    const room = await createChatRoom({ type: "group", title: input.title, participantIds: input.participantIds });
+    setChatContacts(await fetchChatContacts());
+    await loadThread(room.id);
+  }
+
+  async function addUsersToActiveChat(participantIds: number[]) {
+    if (!activeChatId) {
+      return;
+    }
+    await addUsersToChatRoom({ roomId: activeChatId, participantIds });
+    setChatContacts(await fetchChatContacts());
   }
 
   async function sendMessage(body: string) {
@@ -239,12 +271,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider
       value={{
         activeChatId,
+        addUsersToActiveChat,
         addLiveComment,
         addPostComment,
         chatContacts,
         chatMessages,
+        chatUsers,
         closeLive,
         comments,
+        createDirectChat,
+        createGroupChat,
         displayPosts,
         health,
         isBooting,
