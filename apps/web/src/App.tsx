@@ -66,6 +66,7 @@ import {
   type LiveIndex,
   type LiveRating,
   type LiveRoom,
+  type PostInput,
   type ProfileResponse,
 } from "./api";
 
@@ -136,6 +137,58 @@ const themeOptions: Array<{
 
 const THEME_STORAGE_KEY = "creators-theme";
 const quickEmoji = [":sparkles:", ":fire:", ":heart:", ":raised_hands:", ":zap:"];
+
+type StudioDraft = {
+  body: string;
+  mood: string;
+  mediaUrl: string;
+  filterName: string;
+  overlayText: string;
+  sticker: string;
+  textColor: string;
+  backgroundTone: string;
+  aspectRatio: string;
+};
+
+const studioMediaOptions = [
+  "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=84",
+  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=84",
+  "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=84",
+  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=84",
+  "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=84",
+];
+
+const studioFilters = [
+  { name: "Original", css: "none" },
+  { name: "Glow", css: "saturate(1.18) contrast(1.06) brightness(1.06)" },
+  { name: "Warm", css: "sepia(0.16) saturate(1.22) contrast(1.04)" },
+  { name: "Mono", css: "grayscale(1) contrast(1.12)" },
+  { name: "Pop", css: "saturate(1.42) contrast(1.12)" },
+];
+
+const studioStickers = ["LIVE", "DROP", "NEW", "VIP", "Q&A"];
+const studioTextColors = ["#ffffff", "#fff5da", "#d8fff1", "#bfe0ff", "#ffb8cf"];
+const studioTones = [
+  { id: "midnight", label: "Midnight" },
+  { id: "sunset", label: "Sunset" },
+  { id: "emerald", label: "Emerald" },
+  { id: "violet", label: "Violet" },
+];
+const studioAspectRatios = ["4:5", "1:1", "9:16"];
+
+function createStudioDraft(): StudioDraft {
+  return {
+    body: "",
+    mood: "Behind the scenes",
+    mediaUrl: studioMediaOptions[0],
+    filterName: studioFilters[0].name,
+    overlayText: "New drop",
+    sticker: studioStickers[0],
+    textColor: studioTextColors[0],
+    backgroundTone: studioTones[0].id,
+    aspectRatio: studioAspectRatios[0],
+  };
+}
 
 const featureRows = [
   {
@@ -512,6 +565,12 @@ function HomeApp({
     setProfile(await updateProfile(input));
   }
 
+  async function publishStudioPost(input: PostInput) {
+    const post = await createPost(input);
+    setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+    return post;
+  }
+
   function changeTab(tab: HomeTab) {
     if (tab === "streams") {
       setSelectedLiveId(null);
@@ -580,7 +639,7 @@ function HomeApp({
         ) : null}
 
         {activeTab === "studio" ? (
-          <StudioPanel posts={displayPosts} serviceLabel={serviceLabel} />
+          <StudioPanel onCreatePost={publishStudioPost} posts={displayPosts} serviceLabel={serviceLabel} />
         ) : null}
 
         {activeTab === "profiles" && profileView === "profile" ? (
@@ -816,6 +875,7 @@ function FeedCard({
   const [open, setOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
+  const imageFilter = webFilterFor(post.filterName);
 
   function promotePost() {
     setPromoted((current) => {
@@ -830,6 +890,13 @@ function FeedCard({
       await createPost({
         body: `Sharing ${post.author.name}'s post: ${post.body}`,
         mood: post.mood,
+        mediaUrl: post.mediaUrl || post.gallery[0],
+        filterName: post.filterName,
+        overlayText: post.overlayText,
+        sticker: post.sticker,
+        textColor: post.textColor,
+        backgroundTone: post.backgroundTone,
+        aspectRatio: post.aspectRatio,
       });
       setShareStatus("Shared to your profile.");
     } catch (err) {
@@ -861,7 +928,7 @@ function FeedCard({
   return (
     <article className="feed-card">
       <div className="photo-grid">
-        <img className="photo-grid-main" alt="" src={post.gallery[0]} />
+        <img className="photo-grid-main" alt="" src={post.gallery[0]} style={{ filter: imageFilter }} />
         {post.gallery.slice(1, 5).map((image, index) => (
           <div className="photo-tile" key={image}>
             <img alt="" src={image} />
@@ -869,7 +936,14 @@ function FeedCard({
           </div>
         ))}
 
-      <div className="feed-image-shade" />
+        {post.overlayText || post.sticker ? (
+          <div className={`feed-creative-layer tone-${post.backgroundTone || "midnight"}`}>
+            {post.sticker ? <span className="feed-sticker">{post.sticker}</span> : null}
+            {post.overlayText ? <strong style={{ color: post.textColor || "#ffffff" }}>{post.overlayText}</strong> : null}
+          </div>
+        ) : null}
+
+        <div className="feed-image-shade" />
         <header className="feed-card-header">
           <button className="feed-profile-trigger" type="button" onClick={() => onOpenProfile(post)} aria-label={`Open ${post.author.name} profile`}>
             <img alt="" src={profileImageFor(post.author.name)} />
@@ -1598,10 +1672,56 @@ function SearchMessages({
   );
 }
 
-function StudioPanel({ posts, serviceLabel }: { posts: DisplayPost[]; serviceLabel: string }) {
+function StudioPanel({
+  onCreatePost,
+  posts,
+  serviceLabel,
+}: {
+  onCreatePost: (input: PostInput) => Promise<FeedPost>;
+  posts: DisplayPost[];
+  serviceLabel: string;
+}) {
+  const [draft, setDraft] = useState<StudioDraft>(() => createStudioDraft());
+  const [publishing, setPublishing] = useState(false);
+  const [publishStatus, setPublishStatus] = useState("");
   const topPosts = posts.slice(0, 3);
   const topBoost = topPosts[0]?.promotionScore ?? 0;
   const totalReach = topPosts.reduce((total, post) => total + post.likes + post.comments, 0);
+  const selectedFilter = studioFilters.find((filter) => filter.name === draft.filterName) ?? studioFilters[0];
+  const selectedTone = studioTones.find((tone) => tone.id === draft.backgroundTone) ?? studioTones[0];
+
+  function updateDraft<K extends keyof StudioDraft>(key: K, value: StudioDraft[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submitPost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!draft.body.trim() || publishing) {
+      return;
+    }
+
+    setPublishing(true);
+    setPublishStatus("Publishing...");
+    try {
+      const post = await onCreatePost({
+        body: draft.body,
+        mood: draft.mood,
+        mediaUrl: draft.mediaUrl,
+        filterName: draft.filterName,
+        overlayText: draft.overlayText,
+        sticker: draft.sticker,
+        textColor: draft.textColor,
+        backgroundTone: draft.backgroundTone,
+        aspectRatio: draft.aspectRatio,
+      });
+      setDraft(createStudioDraft());
+      setPublishStatus(`Published ${post.mood.toLowerCase()} post.`);
+    } catch (err) {
+      setPublishStatus(err instanceof Error ? err.message : "Could not publish post.");
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   return (
     <section className="studio-panel">
@@ -1609,6 +1729,156 @@ function StudioPanel({ posts, serviceLabel }: { posts: DisplayPost[]; serviceLab
         <p>Creator workspace</p>
         <h1>Studio</h1>
       </header>
+
+      <form className="studio-composer" onSubmit={submitPost}>
+        <div className="studio-editor-preview" aria-label="Post preview">
+          <div className={`studio-preview-frame tone-${selectedTone.id}`} style={{ aspectRatio: draft.aspectRatio.replace(":", " / ") }}>
+            <img alt="" src={draft.mediaUrl} style={{ filter: selectedFilter.css }} />
+            <div className="studio-preview-scrim" />
+            {draft.sticker ? <span className="studio-preview-sticker">{draft.sticker}</span> : null}
+            {draft.overlayText ? <strong style={{ color: draft.textColor }}>{draft.overlayText}</strong> : null}
+            <p>{draft.body || "Write the caption to preview it here."}</p>
+          </div>
+        </div>
+
+        <div className="studio-editor-controls">
+          <label className="studio-field">
+            <span>Caption</span>
+            <InputBase
+              aria-label="Caption"
+              multiline
+              minRows={3}
+              onChange={(event) => updateDraft("body", event.target.value)}
+              placeholder="Share the moment, offer, or behind-the-scenes note."
+              value={draft.body}
+            />
+          </label>
+
+          <label className="studio-field compact">
+            <span>Mood</span>
+            <InputBase aria-label="Mood" onChange={(event) => updateDraft("mood", event.target.value)} value={draft.mood} />
+          </label>
+
+          <label className="studio-field compact">
+            <span>Overlay text</span>
+            <InputBase aria-label="Overlay text" onChange={(event) => updateDraft("overlayText", event.target.value)} value={draft.overlayText} />
+          </label>
+
+          <div className="studio-control-group" aria-label="Media">
+            <span>Media</span>
+            <div className="studio-media-strip">
+              {studioMediaOptions.map((image) => (
+                <button
+                  aria-label="Select media"
+                  className={draft.mediaUrl === image ? "selected" : ""}
+                  key={image}
+                  onClick={() => updateDraft("mediaUrl", image)}
+                  type="button"
+                >
+                  <img alt="" src={image} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="studio-control-grid">
+            <div className="studio-control-group" aria-label="Filters">
+              <span>Filter</span>
+              <div className="studio-chip-row">
+                {studioFilters.map((filter) => (
+                  <button
+                    className={draft.filterName === filter.name ? "selected" : ""}
+                    key={filter.name}
+                    onClick={() => updateDraft("filterName", filter.name)}
+                    type="button"
+                  >
+                    {filter.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="studio-control-group" aria-label="Sticker">
+              <span>Sticker</span>
+              <div className="studio-chip-row">
+                {studioStickers.map((sticker) => (
+                  <button
+                    className={draft.sticker === sticker ? "selected" : ""}
+                    key={sticker}
+                    onClick={() => updateDraft("sticker", sticker)}
+                    type="button"
+                  >
+                    {sticker}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="studio-control-group" aria-label="Text color">
+              <span>Text</span>
+              <div className="studio-color-row">
+                {studioTextColors.map((color) => (
+                  <button
+                    aria-label={`Use ${color} text`}
+                    className={draft.textColor === color ? "selected" : ""}
+                    key={color}
+                    onClick={() => updateDraft("textColor", color)}
+                    style={{ backgroundColor: color }}
+                    type="button"
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="studio-control-group" aria-label="Tone">
+              <span>Tone</span>
+              <div className="studio-chip-row">
+                {studioTones.map((tone) => (
+                  <button
+                    className={draft.backgroundTone === tone.id ? "selected" : ""}
+                    key={tone.id}
+                    onClick={() => updateDraft("backgroundTone", tone.id)}
+                    type="button"
+                  >
+                    {tone.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="studio-control-group" aria-label="Aspect ratio">
+              <span>Canvas</span>
+              <div className="studio-chip-row">
+                {studioAspectRatios.map((ratio) => (
+                  <button
+                    className={draft.aspectRatio === ratio ? "selected" : ""}
+                    key={ratio}
+                    onClick={() => updateDraft("aspectRatio", ratio)}
+                    type="button"
+                  >
+                    {ratio}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="studio-composer-actions">
+            <Button
+              disabled={!draft.body.trim() || publishing}
+              startIcon={<SendRounded />}
+              type="submit"
+              variant="contained"
+            >
+              {publishing ? "Publishing" : "Publish post"}
+            </Button>
+            <IconButton aria-label="Reset editor" onClick={() => setDraft(createStudioDraft())}>
+              <AutoAwesomeRounded />
+            </IconButton>
+          </div>
+          {publishStatus ? <p className="studio-publish-status">{publishStatus}</p> : null}
+        </div>
+      </form>
 
       <article className="studio-status-card">
         <span>Live stack</span>
@@ -2056,14 +2326,17 @@ function AuthDialog({
 }
 
 function createDisplayPosts(posts: FeedPost[]) {
-  const mapped = posts.map<DisplayPost>((post, index) => ({
-    ...post,
-    comments: 348 - index * 32,
-    gallery: [postImageFor(post.id), postImageFor(post.id + 1), postImageFor(post.id + 2), postImageFor(post.id + 3), postImageFor(post.id + 4)],
-    likes: 1125 - index * 121,
-    promotionScore: Math.max(44, Math.min(99, 96 - index * 6 + (post.id % 7))),
-    tags: [post.mood.toLowerCase().replace(/\s+/g, ""), "creator"],
-  }));
+  const mapped = posts.map<DisplayPost>((post, index) => {
+    const leadImage = post.mediaUrl || postImageFor(post.id);
+    return {
+      ...post,
+      comments: 348 - index * 32,
+      gallery: [leadImage, postImageFor(post.id + 1), postImageFor(post.id + 2), postImageFor(post.id + 3), postImageFor(post.id + 4)],
+      likes: 1125 - index * 121,
+      promotionScore: Math.max(44, Math.min(99, 96 - index * 6 + (post.id % 7))),
+      tags: [post.mood.toLowerCase().replace(/\s+/g, ""), "creator"],
+    };
+  });
   return mapped.sort((left, right) => right.promotionScore - left.promotionScore);
 }
 
@@ -2103,6 +2376,10 @@ function firstName(value: string) {
 
 function compactNumber(value: number) {
   return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function webFilterFor(filterName: string) {
+  return studioFilters.find((filter) => filter.name === filterName)?.css ?? "none";
 }
 
 function profileImageFor(seed: string) {

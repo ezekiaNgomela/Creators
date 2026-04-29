@@ -46,8 +46,27 @@ export type FeedPost = {
   id: number;
   body: string;
   mood: string;
+  mediaUrl: string;
+  filterName: string;
+  overlayText: string;
+  sticker: string;
+  textColor: string;
+  backgroundTone: string;
+  aspectRatio: string;
   author: AuthUser;
   createdAt: string;
+};
+
+export type PostInput = {
+  body: string;
+  mood: string;
+  mediaUrl?: string;
+  filterName?: string;
+  overlayText?: string;
+  sticker?: string;
+  textColor?: string;
+  backgroundTone?: string;
+  aspectRatio?: string;
 };
 
 export type FeedResponse = {
@@ -186,6 +205,14 @@ export async function logoutAccount() {
 
 export async function fetchFeed() {
   return apiRequest<FeedResponse>("/feed");
+}
+
+export async function createPost(input: PostInput) {
+  const response = await apiRequest<{ post: FeedPost }>("/posts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.post;
 }
 
 export async function fetchProfile() {

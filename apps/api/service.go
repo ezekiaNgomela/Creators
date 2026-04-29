@@ -208,6 +208,13 @@ func (s *DataService) ListPosts(ctx context.Context) ([]FeedPost, error) {
 			p.id,
 			p.body,
 			p.mood,
+			p.media_url,
+			p.filter_name,
+			p.overlay_text,
+			p.sticker,
+			p.text_color,
+			p.background_tone,
+			p.aspect_ratio,
 			p.created_at,
 			u.id,
 			u.email,
@@ -234,6 +241,13 @@ func (s *DataService) ListPosts(ctx context.Context) ([]FeedPost, error) {
 			&post.ID,
 			&post.Body,
 			&post.Mood,
+			&post.MediaURL,
+			&post.FilterName,
+			&post.OverlayText,
+			&post.Sticker,
+			&post.TextColor,
+			&post.BackgroundTone,
+			&post.AspectRatio,
 			&createdAt,
 			&author.ID,
 			&author.Email,
@@ -251,22 +265,45 @@ func (s *DataService) ListPosts(ctx context.Context) ([]FeedPost, error) {
 	return posts, rows.Err()
 }
 
-func (s *DataService) CreatePost(ctx context.Context, userID int64, body string, mood string) (FeedPost, error) {
-	body = strings.TrimSpace(body)
-	mood = strings.TrimSpace(mood)
-	if body == "" {
+func (s *DataService) CreatePost(ctx context.Context, userID int64, input PostInput) (FeedPost, error) {
+	input.Body = strings.TrimSpace(input.Body)
+	input.Mood = strings.TrimSpace(input.Mood)
+	input.MediaURL = strings.TrimSpace(input.MediaURL)
+	input.FilterName = strings.TrimSpace(input.FilterName)
+	input.OverlayText = strings.TrimSpace(input.OverlayText)
+	input.Sticker = strings.TrimSpace(input.Sticker)
+	input.TextColor = strings.TrimSpace(input.TextColor)
+	input.BackgroundTone = strings.TrimSpace(input.BackgroundTone)
+	input.AspectRatio = strings.TrimSpace(input.AspectRatio)
+
+	if input.Body == "" {
 		return FeedPost{}, errors.New("post body is required")
 	}
-	if mood == "" {
-		mood = "Update"
+	if input.Mood == "" {
+		input.Mood = "Update"
+	}
+	if input.FilterName == "" {
+		input.FilterName = "Original"
+	}
+	if input.TextColor == "" {
+		input.TextColor = "#ffffff"
+	}
+	if input.BackgroundTone == "" {
+		input.BackgroundTone = "midnight"
+	}
+	if input.AspectRatio == "" {
+		input.AspectRatio = "4:5"
 	}
 
 	var postID int64
 	if err := s.Pool.QueryRow(ctx, `
-		INSERT INTO posts (author_id, body, mood)
-		VALUES ($1, $2, $3)
+		INSERT INTO posts (
+			author_id, body, mood, media_url, filter_name, overlay_text,
+			sticker, text_color, background_tone, aspect_ratio
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id
-	`, userID, body, mood).Scan(&postID); err != nil {
+	`, userID, input.Body, input.Mood, input.MediaURL, input.FilterName, input.OverlayText, input.Sticker, input.TextColor, input.BackgroundTone, input.AspectRatio).Scan(&postID); err != nil {
 		return FeedPost{}, err
 	}
 	return s.FindPost(ctx, postID)
@@ -281,6 +318,13 @@ func (s *DataService) FindPost(ctx context.Context, postID int64) (FeedPost, err
 			p.id,
 			p.body,
 			p.mood,
+			p.media_url,
+			p.filter_name,
+			p.overlay_text,
+			p.sticker,
+			p.text_color,
+			p.background_tone,
+			p.aspect_ratio,
 			p.created_at,
 			u.id,
 			u.email,
@@ -295,6 +339,13 @@ func (s *DataService) FindPost(ctx context.Context, postID int64) (FeedPost, err
 		&post.ID,
 		&post.Body,
 		&post.Mood,
+		&post.MediaURL,
+		&post.FilterName,
+		&post.OverlayText,
+		&post.Sticker,
+		&post.TextColor,
+		&post.BackgroundTone,
+		&post.AspectRatio,
 		&createdAt,
 		&author.ID,
 		&author.Email,
@@ -962,7 +1013,22 @@ func (s *DataService) ensureDirectRoomByID(ctx context.Context, userID int64, ot
 	var roomID int64
 	err := s.Pool.QueryRow(ctx, `
 		INSERT INTO chat_rooms (type, title, created_by, direct_key, legacy_contact_id)
-		VALUES ('direct', '', $1, $2, NULLIF($3, ''))
+		VALUES (
+			'direct',
+			'',
+			$1,
+			$2,
+			CASE
+				WHEN NULLIF($3, '') IS NULL THEN NULL
+				WHEN EXISTS (
+					SELECT 1
+					FROM chat_rooms
+					WHERE legacy_contact_id = $3
+					AND direct_key <> $2
+				) THEN NULL
+				ELSE $3
+			END
+		)
 		ON CONFLICT (direct_key) DO UPDATE
 		SET legacy_contact_id = COALESCE(chat_rooms.legacy_contact_id, EXCLUDED.legacy_contact_id),
 			updated_at = chat_rooms.updated_at

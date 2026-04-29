@@ -69,7 +69,7 @@ export function HomePostCard({ post }: { post: DisplayPost }) {
 
       <Text style={{ color: cardColors.ink, fontSize: 15, lineHeight: 22 }}>{post.body}</Text>
 
-      <GalleryMosaic gallery={post.gallery} />
+      <GalleryMosaic post={post} />
 
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
@@ -82,15 +82,19 @@ export function HomePostCard({ post }: { post: DisplayPost }) {
   );
 }
 
-function GalleryMosaic({ gallery }: { gallery: string[] }) {
+function GalleryMosaic({ post }: { post: DisplayPost }) {
+  const gallery = post.gallery;
   const images = gallery.slice(0, 4);
 
   if (images.length <= 1) {
     return (
-      <Image
-        source={{ uri: images[0] }}
-        style={{ width: "100%", aspectRatio: 1.08, borderRadius: 24 }}
-      />
+      <View style={{ overflow: "hidden", borderRadius: 24 }}>
+        <Image
+          source={{ uri: images[0] }}
+          style={{ width: "100%", aspectRatio: 1.08 }}
+        />
+        <CreativeOverlay post={post} />
+      </View>
     );
   }
 
@@ -106,7 +110,10 @@ function GalleryMosaic({ gallery }: { gallery: string[] }) {
 
   return (
     <View style={{ flexDirection: "row", gap: spacing.sm }}>
-      <Image source={{ uri: images[0] }} style={{ flex: 1.28, aspectRatio: 0.82, borderRadius: 24 }} />
+      <View style={{ flex: 1.28, overflow: "hidden", borderRadius: 24 }}>
+        <Image source={{ uri: images[0] }} style={{ width: "100%", aspectRatio: 0.82 }} />
+        <CreativeOverlay post={post} compact />
+      </View>
       <View style={{ flex: 0.92, gap: spacing.sm }}>
         <Image source={{ uri: images[1] }} style={{ width: "100%", aspectRatio: 1.1, borderRadius: 20 }} />
         <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -134,6 +141,40 @@ function GalleryMosaic({ gallery }: { gallery: string[] }) {
       </View>
     </View>
   );
+}
+
+function CreativeOverlay({ compact, post }: { compact?: boolean; post: DisplayPost }) {
+  if (!post.overlayText && !post.sticker) {
+    return null;
+  }
+
+  return (
+    <View style={{ position: "absolute", left: 8, right: 8, bottom: 8, gap: 5 }}>
+      {post.sticker ? (
+        <View style={{ alignSelf: "flex-start", borderRadius: radius.pill, backgroundColor: "rgba(0,0,0,0.42)", paddingHorizontal: 8, paddingVertical: 4 }}>
+          <Text style={{ color: "#fff", fontSize: compact ? 9 : 10, fontWeight: "900" }}>{post.sticker}</Text>
+        </View>
+      ) : null}
+      {post.overlayText ? (
+        <Text style={{ alignSelf: "flex-start", borderRadius: 14, backgroundColor: toneColor(post.backgroundTone), color: post.textColor || "#fff", fontSize: compact ? 16 : 22, fontWeight: "900", lineHeight: compact ? 17 : 22, paddingHorizontal: 8, paddingVertical: 6 }} numberOfLines={compact ? 2 : 3}>
+          {post.overlayText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function toneColor(tone: string) {
+  if (tone === "sunset") {
+    return "rgba(255, 142, 104, 0.36)";
+  }
+  if (tone === "emerald") {
+    return "rgba(46, 213, 115, 0.3)";
+  }
+  if (tone === "violet") {
+    return "rgba(139, 92, 246, 0.32)";
+  }
+  return "rgba(6, 12, 26, 0.42)";
 }
 
 function Stat({

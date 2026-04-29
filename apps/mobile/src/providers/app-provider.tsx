@@ -11,10 +11,12 @@ import {
   type LiveIndex,
   type LiveRating,
   type LiveRoom,
+  type PostInput,
   type ProfileResponse,
   addUsersToChatRoom,
   createChatRoom,
   createComment,
+  createPost,
   fetchChatContacts,
   fetchChatMessages,
   fetchChatUsers,
@@ -62,6 +64,7 @@ type AppContextValue = {
   openLive: (room: LiveRoom) => void;
   closeLive: () => void;
   setTheme: (theme: ThemeName) => void;
+  createStudioPost: (input: PostInput) => Promise<FeedPost>;
   addPostComment: (postId: number, body: string) => Promise<void>;
   addLiveComment: (liveId: number, body: string) => Promise<void>;
   loadPostComments: (postId: number) => Promise<void>;
@@ -106,7 +109,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const mapped = posts.map<DisplayPost>((post, index) => ({
       ...post,
       comments: 348 - index * 27,
-      gallery: [postImageFor(post.id), postImageFor(post.id + 1), postImageFor(post.id + 2), postImageFor(post.id + 3)],
+      gallery: [post.mediaUrl || postImageFor(post.id), postImageFor(post.id + 1), postImageFor(post.id + 2), postImageFor(post.id + 3)],
       likes: 1125 - index * 109,
       promotionScore: Math.max(42, Math.min(99, 96 - index * 5 + (post.id % 6))),
       tags: [post.mood.toLowerCase().replace(/\s+/g, ""), "creator"],
@@ -252,6 +255,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setComments((current) => [...current, comment]);
   }
 
+  async function createStudioPost(input: PostInput) {
+    const post = await createPost(input);
+    setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+    return post;
+  }
+
   async function saveProfile(input: { name: string; bio: string; headline: string; location: string }) {
     setProfile(await updateProfile(input));
   }
@@ -281,6 +290,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         comments,
         createDirectChat,
         createGroupChat,
+        createStudioPost,
         displayPosts,
         health,
         isBooting,

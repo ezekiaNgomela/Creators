@@ -44,17 +44,36 @@ type LiveRoom struct {
 }
 
 type FeedPost struct {
-	ID        int64    `json:"id"`
-	Body      string   `json:"body"`
-	Mood      string   `json:"mood"`
-	Author    AuthUser `json:"author"`
-	CreatedAt string   `json:"createdAt"`
+	ID             int64    `json:"id"`
+	Body           string   `json:"body"`
+	Mood           string   `json:"mood"`
+	MediaURL       string   `json:"mediaUrl"`
+	FilterName     string   `json:"filterName"`
+	OverlayText    string   `json:"overlayText"`
+	Sticker        string   `json:"sticker"`
+	TextColor      string   `json:"textColor"`
+	BackgroundTone string   `json:"backgroundTone"`
+	AspectRatio    string   `json:"aspectRatio"`
+	Author         AuthUser `json:"author"`
+	CreatedAt      string   `json:"createdAt"`
 }
 
 type FeedResponse struct {
 	User      AuthUser   `json:"user"`
 	LiveRooms []LiveRoom `json:"liveRooms"`
 	Posts     []FeedPost `json:"posts"`
+}
+
+type PostInput struct {
+	Body           string `json:"body"`
+	Mood           string `json:"mood"`
+	MediaURL       string `json:"mediaUrl"`
+	FilterName     string `json:"filterName"`
+	OverlayText    string `json:"overlayText"`
+	Sticker        string `json:"sticker"`
+	TextColor      string `json:"textColor"`
+	BackgroundTone string `json:"backgroundTone"`
+	AspectRatio    string `json:"aspectRatio"`
 }
 
 type ProfileResponse struct {

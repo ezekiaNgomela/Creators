@@ -41,8 +41,27 @@ export type FeedPost = {
   id: number;
   body: string;
   mood: string;
+  mediaUrl: string;
+  filterName: string;
+  overlayText: string;
+  sticker: string;
+  textColor: string;
+  backgroundTone: string;
+  aspectRatio: string;
   author: AuthUser;
   createdAt: string;
+};
+
+export type PostInput = {
+  body: string;
+  mood: string;
+  mediaUrl?: string;
+  filterName?: string;
+  overlayText?: string;
+  sticker?: string;
+  textColor?: string;
+  backgroundTone?: string;
+  aspectRatio?: string;
 };
 
 export type FeedResponse = {
@@ -208,7 +227,7 @@ export async function fetchFeed(): Promise<FeedResponse> {
   return apiRequest<FeedResponse>("/feed");
 }
 
-export async function createPost(input: { body: string; mood: string }): Promise<FeedPost> {
+export async function createPost(input: PostInput): Promise<FeedPost> {
   const response = await apiRequest<{ post: FeedPost }>("/posts", {
     method: "POST",
     body: JSON.stringify(input),

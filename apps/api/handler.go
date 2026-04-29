@@ -271,15 +271,12 @@ func (h *Handler) HandlePosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input struct {
-		Body string `json:"body"`
-		Mood string `json:"mood"`
-	}
+	var input PostInput
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	post, err := h.Service.CreatePost(r.Context(), userID, input.Body, input.Mood)
+	post, err := h.Service.CreatePost(r.Context(), userID, input)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, publicError(err))
 		return
