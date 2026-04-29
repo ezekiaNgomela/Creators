@@ -72,23 +72,8 @@ export type DisplayPost = FeedPost & {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-const fallbackPosts: DisplayPost[] = [
-  {
-    id: 901,
-    author: { id: 901, createdAt: new Date().toISOString(), email: "christina@creators.local", name: "Christina Kennedy", provider: "seed" },
-    body: "The state of Utah in the United States is home to lots of beautiful National Parks. :sparkles:",
-    comments: 348,
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    gallery: [postImageFor(1), postImageFor(2), postImageFor(3), postImageFor(4)],
-    likes: 1125,
-    mood: "Travel",
-    promotionScore: 94,
-    tags: ["relax", "travel"],
-  },
-];
-
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [activeChatId, setActiveChatId] = useState("alejandro-hicks");
+  const [activeChatId, setActiveChatId] = useState("");
   const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -117,7 +102,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       promotionScore: Math.max(42, Math.min(99, 96 - index * 5 + (post.id % 6))),
       tags: [post.mood.toLowerCase().replace(/\s+/g, ""), "creator"],
     }));
-    return [...mapped, ...fallbackPosts].sort((left, right) => right.promotionScore - left.promotionScore);
+    return mapped.sort((left, right) => right.promotionScore - left.promotionScore);
   }, [posts]);
 
   async function loadSession() {
@@ -185,6 +170,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function signOut() {
     await logoutAccount();
     setSession(null);
+    setActiveChatId("");
+    setChatContacts([]);
+    setChatMessages([]);
+    setComments([]);
+    setLiveIndex(null);
+    setLiveRooms([]);
+    setPosts([]);
+    setProfile(null);
   }
 
   async function loadThread(contactId: string) {
@@ -193,6 +186,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function sendMessage(body: string) {
+    if (!activeChatId) {
+      return;
+    }
     const message = await sendChatMessage({ contactId: activeChatId, body });
     setChatMessages((current) => [...current, message]);
     setChatContacts(await fetchChatContacts());

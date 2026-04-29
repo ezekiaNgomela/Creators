@@ -1,83 +1,66 @@
-import { Image } from "expo-image";
-import { ScrollView, Text, View, Pressable } from "react-native";
+import { router } from "expo-router";
+import { useMemo, useState } from "react";
 
-import { StreamChatBubble } from "@/src/components/cards/stream-chat-bubble";
-import { CommentComposer } from "@/src/components/ui/comment-composer";
+import { ChatHomeLayout } from "@/src/features/chat/components/chat-home-layout";
 import { useApp } from "@/src/providers/app-provider";
-import { stylex } from "@/src/theme/stylex";
-import { palette, radius, spacing } from "@/src/theme/tokens";
+
+export type ChatMode = "Chats" | "Pinned" | "Groups";
 
 export function ChatScreen() {
-  const { activeChatId, chatContacts, chatMessages, loadThread, sendMessage } = useApp();
+  const { activeChatId, chatContacts, chatMessages, loadThread, session } = useApp();
+  const [mode, setMode] = useState<ChatMode>("Chats");
+  const [query, setQuery] = useState("");
+
+  const filteredContacts = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    const base = chatContacts.filter((contact) => {
+      if (!term) {
+        return true;
+      }
+      const haystack = `${contact.name} ${contact.subtitle} ${contact.lastBody}`.toLowerCase();
+      return haystack.includes(term);
+    });
+
+    if (mode === "Pinned") {
+      return base.slice(0, 3);
+    }
+
+    if (mode === "Groups") {
+      return base.filter((_, index) => index % 2 === 0);
+    }
+
+    return base;
+  }, [chatContacts, mode, query]);
+
+  async function openThread(contactId: string) {
+    await loadThread(contactId);
+    router.push({ pathname: "/conversations/[contactId]", params: { contactId } });
+  }
+
+  async function openVoice(contactId: string) {
+    await loadThread(contactId);
+    router.push({ pathname: "/conversations/[contactId]/voice", params: { contactId } });
+  }
+
+  async function openVideo(contactId: string) {
+    await loadThread(contactId);
+    router.push({ pathname: "/conversations/[contactId]/video", params: { contactId } });
+  }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: 120 }} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: palette.bg }}>
-      <View style={{ gap: spacing.md }}>
-        <Text style={chatStyles.title}>Messages</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md }}>
-          {chatContacts.slice(0, 5).map((contact) => (
-            <Pressable key={contact.id} onPress={() => void loadThread(contact.id)} style={{ alignItems: "center", gap: spacing.xs }}>
-              <View style={{ borderRadius: radius.pill, padding: 2, backgroundColor: palette.accent }}>
-                <Image source={{ uri: `https://api.dicebear.com/8.x/lorelei/png?seed=${encodeURIComponent(contact.name)}` }} style={{ width: 58, height: 58, borderRadius: 999 }} />
-              </View>
-              <Text style={{ color: palette.textMuted }}>{contact.name.split(" ")[0]}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={{ gap: spacing.sm }}>
-        {chatContacts.map((contact) => (
-          <Pressable
-            key={contact.id}
-            onPress={() => void loadThread(contact.id)}
-            style={{
-              flexDirection: "row",
-              gap: spacing.sm,
-              alignItems: "center",
-              borderRadius: radius.lg,
-              borderWidth: 1,
-              borderColor: activeChatId === contact.id ? palette.accent : palette.stroke,
-              backgroundColor: palette.panel,
-              padding: spacing.md,
-            }}
-          >
-            <Image source={{ uri: `https://api.dicebear.com/8.x/lorelei/png?seed=${encodeURIComponent(contact.name)}` }} style={{ width: 52, height: 52, borderRadius: 999 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: palette.text, fontWeight: "800" }}>{contact.name}</Text>
-              <Text style={{ color: palette.textMuted, marginTop: 2 }}>{contact.lastBody || contact.subtitle}</Text>
-            </View>
-            <View style={{ width: 10, height: 10, borderRadius: 999, backgroundColor: palette.accentStrong }} />
-          </Pressable>
-        ))}
-      </View>
-
-      <View
-        style={{
-          borderRadius: radius.xl,
-          borderWidth: 1,
-          borderColor: palette.stroke,
-          backgroundColor: "#14181f",
-          padding: spacing.lg,
-          gap: spacing.md,
-        }}
-      >
-        <Text style={{ color: palette.text, fontWeight: "900", fontSize: 22 }}>Thread</Text>
-        <View style={{ gap: spacing.sm }}>
-          {chatMessages.map((message) => (
-            <StreamChatBubble author={message.own ? "You" : message.sender.name} body={message.body} key={message.id} own={message.own} />
-          ))}
-        </View>
-        <CommentComposer onSubmit={sendMessage} placeholder="Type a message" />
-      </View>
-    </ScrollView>
+    <ChatHomeLayout
+      activeChatId={activeChatId}
+      chatMessages={chatMessages}
+      contacts={chatContacts}
+      filteredContacts={filteredContacts}
+      mode={mode}
+      onModeChange={setMode}
+      onOpenThread={(contactId) => void openThread(contactId)}
+      onOpenVideo={(contactId) => void openVideo(contactId)}
+      onOpenVoice={(contactId) => void openVoice(contactId)}
+      onQueryChange={setQuery}
+      query={query}
+      sessionName={session?.name}
+    />
   );
 }
-
-const chatStyles = stylex.create({
-  title: {
-    color: palette.text,
-    fontSize: 32,
-    fontWeight: "900" as const,
-  },
-});

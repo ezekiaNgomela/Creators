@@ -148,45 +148,6 @@ const featureRows = [
   },
 ];
 
-const fallbackPosts: DisplayPost[] = [
-  {
-    id: 901,
-    author: {
-      id: 901,
-      createdAt: new Date().toISOString(),
-      email: "christina@creators.local",
-      name: "Christina Kennedy",
-      provider: "seed",
-    },
-    body: "The state of Utah in the United States is home to lots of beautiful National Parks, and Bryce Canyon National Park ranks as three of the most magnificent.",
-    comments: 348,
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    gallery: [postImageFor(1), postImageFor(2), postImageFor(3), postImageFor(4), postImageFor(5)],
-    likes: 1125,
-    mood: "Travel",
-    promotionScore: 94,
-    tags: ["relax", "travel"],
-  },
-  {
-    id: 902,
-    author: {
-      id: 902,
-      createdAt: new Date().toISOString(),
-      email: "gerald@creators.local",
-      name: "Gerald Thomas",
-      provider: "seed",
-    },
-    body: "St. Urber is one of the biggest superstars to have emerged from the professional maker world this year.",
-    comments: 128,
-    createdAt: new Date(Date.now() - 2.6 * 60 * 60 * 1000).toISOString(),
-    gallery: [postImageFor(6), postImageFor(7), postImageFor(8), postImageFor(9)],
-    likes: 784,
-    mood: "Creators",
-    promotionScore: 88,
-    tags: ["studio", "creator"],
-  },
-];
-
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -405,7 +366,7 @@ function HomeApp({
   const [profileView, setProfileView] = useState<ProfileView>("profile");
   const [selectedProfilePost, setSelectedProfilePost] = useState<DisplayPost | null>(null);
   const [selectedLiveId, setSelectedLiveId] = useState<number | null>(null);
-  const [selectedThreadId, setSelectedThreadId] = useState("alejandro-hicks");
+  const [selectedThreadId, setSelectedThreadId] = useState("");
 
   const displayPosts = useMemo(() => createDisplayPosts(posts), [posts]);
   const selectedLive = liveRooms.find((room) => room.id === selectedLiveId) ?? liveRooms[0] ?? null;
@@ -419,12 +380,23 @@ function HomeApp({
     setLoading(true);
     setFeedError("");
     try {
-      const feed = await fetchFeed();
+      const [feed, nextLiveIndex, nextProfile, nextContacts] = await Promise.all([
+        fetchFeed(),
+        fetchLiveIndex(),
+        fetchProfile(),
+        fetchChatContacts(),
+      ]);
       setLiveRooms(feed.liveRooms);
       setPosts(feed.posts);
-      setLiveIndex(await fetchLiveIndex());
-      setProfile(await fetchProfile());
-      setChatContacts(await fetchChatContacts());
+      setLiveIndex(nextLiveIndex);
+      setProfile(nextProfile);
+      setChatContacts(nextContacts);
+
+      const nextThreadId = nextContacts.some((contact) => contact.id === selectedThreadId)
+        ? selectedThreadId
+        : nextContacts[0]?.id ?? "";
+      setSelectedThreadId(nextThreadId);
+      setChatMessages(nextThreadId ? await fetchChatMessages(nextThreadId) : []);
     } catch (err) {
       setFeedError(err instanceof Error ? err.message : "Could not load feed");
     } finally {
@@ -501,6 +473,9 @@ function HomeApp({
   }
 
   async function sendMessage(body: string) {
+    if (!selectedThreadId) {
+      return;
+    }
     const message = await sendChatMessage({ contactId: selectedThreadId, body });
     setChatMessages((current) => [...current, message]);
     setChatContacts(await fetchChatContacts());
@@ -1956,7 +1931,7 @@ function createDisplayPosts(posts: FeedPost[]) {
     promotionScore: Math.max(44, Math.min(99, 96 - index * 6 + (post.id % 7))),
     tags: [post.mood.toLowerCase().replace(/\s+/g, ""), "creator"],
   }));
-  return [...mapped, ...fallbackPosts].sort((left, right) => right.promotionScore - left.promotionScore);
+  return mapped.sort((left, right) => right.promotionScore - left.promotionScore);
 }
 
 function timeAgo(value: string) {

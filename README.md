@@ -11,6 +11,8 @@ Creators runs locally without Docker.
 
 ## Run
 
+### 1. Infrastructure & API
+Run the runner script from the root directory to start the database, cache, and Go API:
 ```powershell
 .\run-project.ps1
 ```

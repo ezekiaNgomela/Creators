@@ -51,7 +51,7 @@ export default function LandingScreen() {
             Creators
           </Text>
           <Text style={{ color: palette.textMuted, fontSize: 16, lineHeight: 24, marginTop: spacing.sm, marginBottom: spacing.xl }}>
-            Wild social storytelling, live rooms, studio tools, and creator messaging in one mobile-native flow.
+            Connect with creators now. Wild social storytelling, live rooms, and studio tools in one mobile-native flow.
           </Text>
 
           <GlassCard>
