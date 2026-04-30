@@ -8,7 +8,6 @@ import { ChannelCard } from "@/src/components/cards/channel-card";
 import { StreamChatBubble } from "@/src/components/cards/stream-chat-bubble";
 import { LiveLayout } from "@/src/features/live/components/live-layout";
 import { CommentComposer } from "@/src/components/ui/comment-composer";
-import { PrimaryButton } from "@/src/components/ui/primary-button";
 import { useApp } from "@/src/providers/app-provider";
 import { stylex } from "@/src/theme/stylex";
 import { palette, radius, spacing } from "@/src/theme/tokens";
@@ -19,7 +18,7 @@ export function LiveScreen() {
 
   if (!selectedLiveRoom) {
     return (
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: 120 }} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: palette.bg }}>
+      <ScrollView contentContainerStyle={{ padding: spacing.sm, gap: spacing.sm, paddingBottom: 104 }} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: "#080b13" }}>
         <LiveLayout liveIndex={liveIndex} liveRooms={liveRooms} onOpenLive={openLive} sessionName={session?.name} />
       </ScrollView>
     );
@@ -45,20 +44,26 @@ export function LiveScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: 120 }} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: palette.bg }}>
-      <View style={{ overflow: "hidden", borderRadius: radius.xl, borderWidth: 1, borderColor: palette.stroke, backgroundColor: palette.panel }}>
+    <ScrollView contentContainerStyle={{ padding: spacing.sm, gap: spacing.sm, paddingBottom: 104 }} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: "#080b13" }}>
+      <View style={{ overflow: "hidden", borderRadius: 30, borderWidth: 1, borderColor: "rgba(255,255,255,0.09)", backgroundColor: "#101522" }}>
         <Pressable onPress={closeLive}>
-          <Image source={{ uri: selectedLiveRoom.coverUrl }} style={{ width: "100%", aspectRatio: 0.68 }} />
+          <Image source={{ uri: selectedLiveRoom.coverUrl }} style={{ width: "100%", aspectRatio: 0.58 }} />
           <LinearGradient colors={["transparent", "rgba(0,0,0,0.94)"]} style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }} />
-          <View style={{ position: "absolute", left: spacing.lg, right: spacing.lg, bottom: spacing.lg }}>
-            <Text style={{ color: palette.accentWarm, fontWeight: "900", textTransform: "uppercase" }}>Now watching</Text>
-            <Text style={{ color: palette.text, fontSize: 30, fontWeight: "900", marginTop: spacing.sm }}>{selectedLiveRoom.title}</Text>
-            <Text style={{ color: "rgba(255,255,255,0.7)", marginTop: spacing.xs }}>{selectedLiveRoom.host}</Text>
+          <View style={{ position: "absolute", left: spacing.md, right: spacing.md, top: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Pressable onPress={closeLive} style={{ width: 38, height: 38, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.36)" }}>
+              <Ionicons color="#fff" name="arrow-back" size={18} />
+            </Pressable>
+            <View style={{ borderRadius: radius.pill, backgroundColor: "#ff315f", paddingHorizontal: spacing.sm, paddingVertical: 7 }}>
+              <Text style={{ color: "#fff", fontSize: 11, fontWeight: "900" as const }}>{selectedLiveRoom.viewers.toLocaleString()} Live</Text>
+            </View>
+          </View>
+          <View style={{ position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.md }}>
+            <Text style={{ color: palette.accent, fontWeight: "900", fontSize: 11, textTransform: "uppercase" }}>Now watching</Text>
+            <Text style={{ color: palette.text, fontSize: 29, lineHeight: 30, fontWeight: "900", marginTop: spacing.xs }}>{selectedLiveRoom.title}</Text>
+            <Text style={{ color: "rgba(255,255,255,0.72)", marginTop: spacing.xs, fontSize: 12, fontWeight: "800" }}>{selectedLiveRoom.host} - {selectedLiveRoom.topic}</Text>
           </View>
         </Pressable>
       </View>
-
-      <PrimaryButton label="Tap video again to leave focused player" onPress={closeLive} />
 
       <View style={liveStyles.meetingPanel}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
@@ -149,16 +154,16 @@ function LiveControl({
 const liveStyles = stylex.create({
   sectionTitle: {
     color: palette.text,
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: "900" as const,
   },
   meetingPanel: {
-    borderRadius: radius.xl,
+    borderRadius: 26,
     borderWidth: 1,
     borderColor: "rgba(109,233,183,0.22)",
-    backgroundColor: palette.panel,
-    padding: spacing.md,
-    gap: spacing.md,
+    backgroundColor: "#101522",
+    padding: spacing.sm,
+    gap: spacing.sm,
   },
   eyebrow: {
     color: palette.accent,
@@ -169,7 +174,7 @@ const liveStyles = stylex.create({
   },
   meetingTitle: {
     color: palette.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "900" as const,
     marginTop: 4,
   },
@@ -180,8 +185,8 @@ const liveStyles = stylex.create({
     marginTop: 4,
   },
   participantAvatar: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     borderRadius: radius.pill,
     borderWidth: 2,
     borderColor: palette.panel,

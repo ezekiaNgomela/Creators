@@ -92,8 +92,10 @@ export function StudioScreen() {
   const libraryItems = useMemo(() => Array.from(new Set(displayPosts.flatMap((post) => post.gallery))).filter(Boolean), [displayPosts]);
   const selectedFilter = useMemo(() => filters.find((filter) => filter.name === draft.filterName) ?? filters[0], [draft.filterName]);
   const selectedTone = useMemo(() => tones.find((tone) => tone.id === draft.backgroundTone) ?? tones[0], [draft.backgroundTone]);
-  const canvasWidth = isLargeSurface ? Math.min(width * 0.42, 520) : Math.min(width - spacing.md * 2, 390);
   const canvasMaxHeight = isLargeSurface ? Math.min(height * 0.62, 600) : Math.min(height * 0.56, 540);
+  const activeRatio = ratioValue(draft.aspectRatio);
+  const desiredCanvasWidth = isLargeSurface ? Math.min(width * 0.42, 520) : Math.min(width - spacing.md * 2, 390);
+  const canvasWidth = Math.min(desiredCanvasWidth, canvasMaxHeight * activeRatio);
 
   function update<K extends keyof StudioDraft>(key: K, value: StudioDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -179,7 +181,7 @@ export function StudioScreen() {
   return (
     <ScrollView contentContainerStyle={{ padding: isLargeSurface ? spacing.lg : spacing.sm, gap: spacing.md, paddingBottom: 120 }} contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: "#050507" }}>
       <View style={{ borderRadius: isLargeSurface ? 30 : 0, borderWidth: isLargeSurface ? 1 : 0, borderColor: "rgba(255,255,255,0.08)", backgroundColor: "#0b0b0e", overflow: "hidden" }}>
-        <View style={{ minHeight: 58, paddingHorizontal: spacing.sm, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}>
+        <View style={{ minHeight: 46, paddingHorizontal: spacing.xs, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.xs, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}>
           <IconOrb icon="chevron-back" onPress={() => router.back()} />
           <View style={{ flex: 1, alignItems: "center" }}>
             <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Studio</Text>
@@ -188,7 +190,7 @@ export function StudioScreen() {
           <IconOrb icon="checkmark" onPress={() => void publishPost()} />
         </View>
 
-        <View style={{ padding: spacing.sm, gap: spacing.sm }}>
+        <View style={{ padding: spacing.xs, gap: spacing.sm }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs, paddingRight: spacing.sm }}>
             <ModeChip active={mode === "post"} icon="images-outline" label="Post" onPress={() => {
               setMode("post");
@@ -491,8 +493,8 @@ function CanvasBadge({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; la
 
 function IconOrb({ icon, onPress }: { icon: keyof typeof Ionicons.glyphMap; onPress?: () => void }) {
   return (
-    <Pressable onPress={onPress} style={{ width: 40, height: 40, borderRadius: radius.pill, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" }}>
-      <Ionicons color="#fff" name={icon} size={18} />
+    <Pressable onPress={onPress} style={{ width: 34, height: 34, borderRadius: radius.pill, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" }}>
+      <Ionicons color="#fff" name={icon} size={16} />
     </Pressable>
   );
 }
