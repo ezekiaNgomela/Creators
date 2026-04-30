@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { Text, View } from "react-native";
 
 import type { DisplayPost } from "@/src/providers/app-provider";
@@ -21,7 +22,7 @@ export function HomePostCard({ post }: { post: DisplayPost }) {
         borderRadius: 28,
         borderWidth: 1,
         borderColor: cardColors.border,
-        backgroundColor: cardColors.background,
+        backgroundColor: cardColors.background, // Keep background
         padding: spacing.md,
         gap: spacing.md,
       }}
@@ -29,8 +30,8 @@ export function HomePostCard({ post }: { post: DisplayPost }) {
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}>
           <Image
-            source={{ uri: `https://api.dicebear.com/8.x/lorelei/png?seed=${encodeURIComponent(post.author.name)}` }}
-            style={{ width: 42, height: 42, borderRadius: radius.pill }}
+              source={{ uri: `https://api.dicebear.com/8.x/lorelei/png?seed=${encodeURIComponent(post.author.name)}` }} // Keep image source
+              style={{ width: 36, height: 36, borderRadius: radius.pill }} // Smaller avatar
           />
           <View style={{ flex: 1 }}>
             <Text numberOfLines={1} style={{ color: cardColors.ink, fontWeight: "900", fontSize: 15 }}>
@@ -42,7 +43,7 @@ export function HomePostCard({ post }: { post: DisplayPost }) {
         <View
           style={{
             borderRadius: radius.pill,
-            backgroundColor: "rgba(255, 142, 104, 0.14)",
+              backgroundColor: "rgba(255, 142, 104, 0.14)", // Keep background
             paddingHorizontal: spacing.sm,
             paddingVertical: 6,
           }}
@@ -57,7 +58,7 @@ export function HomePostCard({ post }: { post: DisplayPost }) {
             key={tag}
             style={{
               borderRadius: radius.pill,
-              backgroundColor: "rgba(255,255,255,0.82)",
+              backgroundColor: "rgba(255,255,255,0.82)", // Keep background
               paddingHorizontal: spacing.sm,
               paddingVertical: 6,
             }}
@@ -67,7 +68,7 @@ export function HomePostCard({ post }: { post: DisplayPost }) {
         ))}
       </View>
 
-      <Text style={{ color: cardColors.ink, fontSize: 15, lineHeight: 22 }}>{post.body}</Text>
+      <Text style={{ color: cardColors.ink, fontSize: 14, lineHeight: 20 }}>{post.body}</Text> {/* Smaller font size */}
 
       <GalleryMosaic post={post} />
 
@@ -86,14 +87,19 @@ function GalleryMosaic({ post }: { post: DisplayPost }) {
   const gallery = post.gallery;
   const images = gallery.slice(0, 4);
 
+  if (!images.length) {
+    return (
+      <View style={{ minHeight: 180, borderRadius: 24, backgroundColor: "rgba(255, 142, 104, 0.12)", alignItems: "center", justifyContent: "center", padding: spacing.md }}>
+        <Text style={{ color: cardColors.soft, fontWeight: "800", textAlign: "center", fontSize: 12 }}>Media will appear here after upload.</Text> {/* Smaller font size */}
+      </View>
+    );
+  }
+
   if (images.length <= 1) {
     return (
       <View style={{ overflow: "hidden", borderRadius: 24 }}>
-        <Image
-          source={{ uri: images[0] }}
-          style={{ width: "100%", aspectRatio: 1.08 }}
-        />
-        <CreativeOverlay post={post} />
+        <MediaTile post={post} source={images[0]} style={{ width: "100%", aspectRatio: 1.08 }} primary />
+        <CreativeOverlay post={post} /> {/* Keep overlay */}
       </View>
     );
   }
@@ -101,9 +107,9 @@ function GalleryMosaic({ post }: { post: DisplayPost }) {
   if (images.length === 2) {
     return (
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
-        {images.map((image) => (
-          <Image key={image} source={{ uri: image }} style={{ flex: 1, aspectRatio: 0.86, borderRadius: 22 }} />
-        ))}
+        {images.map((image, index) => (
+          <MediaTile key={image} post={post} primary={index === 0} source={image} style={{ flex: 1, aspectRatio: 0.86, borderRadius: 22 }} />
+        ))} {/* Keep media tiles */}
       </View>
     );
   }
@@ -111,16 +117,16 @@ function GalleryMosaic({ post }: { post: DisplayPost }) {
   return (
     <View style={{ flexDirection: "row", gap: spacing.sm }}>
       <View style={{ flex: 1.28, overflow: "hidden", borderRadius: 24 }}>
-        <Image source={{ uri: images[0] }} style={{ width: "100%", aspectRatio: 0.82 }} />
+        <MediaTile post={post} source={images[0]} style={{ width: "100%", aspectRatio: 0.82 }} primary />
         <CreativeOverlay post={post} compact />
-      </View>
+      </View> {/* Keep media tiles and overlay */}
       <View style={{ flex: 0.92, gap: spacing.sm }}>
-        <Image source={{ uri: images[1] }} style={{ width: "100%", aspectRatio: 1.1, borderRadius: 20 }} />
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          <Image source={{ uri: images[2] }} style={{ flex: 1, aspectRatio: 1, borderRadius: 18 }} />
+        <MediaTile post={post} source={images[1]} style={{ width: "100%", aspectRatio: 1.1, borderRadius: 20 }} />
+        <View style={{ flexDirection: "row", gap: spacing.sm }}> {/* Keep media tiles */}
+          <MediaTile post={post} source={images[2]} style={{ flex: 1, aspectRatio: 1, borderRadius: 18 }} />
           {images[3] ? (
             <View style={{ flex: 1 }}>
-              <Image source={{ uri: images[3] }} style={{ width: "100%", aspectRatio: 1, borderRadius: 18 }} />
+              <MediaTile post={post} source={images[3]} style={{ width: "100%", aspectRatio: 1, borderRadius: 18 }} />
               {gallery.length > 4 ? (
                 <View
                   style={{
@@ -140,6 +146,48 @@ function GalleryMosaic({ post }: { post: DisplayPost }) {
         </View>
       </View>
     </View>
+  );
+}
+
+function MediaTile({
+  post,
+  primary,
+  source,
+  style,
+}: {
+  post: DisplayPost;
+  primary?: boolean;
+  source: string;
+  style: object;
+}) {
+  if (primary && post.mediaType === "video") {
+    return <VideoTile post={post} source={source} style={style} />;
+  }
+
+  return (
+    <Image
+      contentFit="cover"
+      contentPosition={primary ? { left: `${post.cropX ?? 50}%`, top: `${post.cropY ?? 50}%` } : undefined}
+      source={{ uri: source }}
+      style={[style, primary ? { transform: [{ scale: post.cropZoom || 1 }, { rotate: `${post.rotation || 0}deg` }] } : null]}
+    />
+  );
+}
+
+function VideoTile({ post, source, style }: { post: DisplayPost; source: string; style: object }) {
+  const player = useVideoPlayer(source, (videoPlayer) => {
+    videoPlayer.loop = true;
+    videoPlayer.muted = true;
+    videoPlayer.play();
+  });
+
+  return (
+    <VideoView
+      contentFit="cover"
+      nativeControls={false}
+      player={player}
+      style={[style, { overflow: "hidden", transform: [{ scale: post.cropZoom || 1 }, { rotate: `${post.rotation || 0}deg` }] }]}
+    />
   );
 }
 

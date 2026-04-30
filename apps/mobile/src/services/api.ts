@@ -22,6 +22,7 @@ export type AuthUser = {
   email: string;
   name: string;
   provider: string;
+  avatarUrl: string;
   createdAt: string;
 };
 
@@ -35,6 +36,7 @@ export type LiveRoom = {
   title: string;
   host: string;
   topic: string;
+  coverUrl: string;
   viewers: number;
   startsAt: string;
   status: "live" | "scheduled" | string;
@@ -47,12 +49,22 @@ export type FeedPost = {
   body: string;
   mood: string;
   mediaUrl: string;
+  mediaType: "image" | "video" | string;
   filterName: string;
   overlayText: string;
   sticker: string;
   textColor: string;
   backgroundTone: string;
   aspectRatio: string;
+  cropZoom: number;
+  cropX: number;
+  cropY: number;
+  rotation: number;
+  commentCount: number;
+  likeCount: number;
+  promotionScore: number;
+  tags: string[];
+  gallery: string[];
   author: AuthUser;
   createdAt: string;
 };
@@ -61,12 +73,45 @@ export type PostInput = {
   body: string;
   mood: string;
   mediaUrl?: string;
+  mediaType?: "image" | "video" | string;
   filterName?: string;
   overlayText?: string;
   sticker?: string;
   textColor?: string;
   backgroundTone?: string;
   aspectRatio?: string;
+  cropZoom?: number;
+  cropX?: number;
+  cropY?: number;
+  rotation?: number;
+};
+
+export type MediaUploadResponse = {
+  url: string;
+  mediaType: "image" | "video" | string;
+  mimeType: string;
+  fileName: string;
+};
+
+export type Notification = {
+  id: number;
+  title: string;
+  body: string;
+  type: string;
+  link: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type CallSession = {
+  id: number;
+  roomId: string;
+  mode: "voice" | "video" | string;
+  status: "ringing" | "active" | "ended" | string;
+  createdBy: AuthUser;
+  participants: ChatParticipant[];
+  createdAt: string;
+  endedAt: string | null;
 };
 
 export type FeedResponse = {
@@ -80,6 +125,9 @@ export type ProfileResponse = {
   bio: string;
   headline: string;
   location: string;
+  avatarUrl: string;
+  coverUrl: string;
+  websiteUrl: string;
 };
 
 export type Comment = {
@@ -146,7 +194,7 @@ async function apiRequest<T>(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers);
   const token = await getToken();
 
-  if (options.body && !headers.has("Content-Type")) {
+  if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (token && !headers.has("Authorization")) {
@@ -207,6 +255,15 @@ export async function fetchFeed() {
   return apiRequest<FeedResponse>("/feed");
 }
 
+export async function uploadMedia(input: { uri: string; name: string; type: string }) {
+  const formData = new FormData();
+  formData.append("file", input as unknown as Blob);
+  return apiRequest<MediaUploadResponse>("/media", {
+    method: "POST",
+    body: formData,
+  });
+}
+
 export async function createPost(input: PostInput) {
   const response = await apiRequest<{ post: FeedPost }>("/posts", {
     method: "POST",
@@ -215,11 +272,44 @@ export async function createPost(input: PostInput) {
   return response.post;
 }
 
+export async function updatePost(id: number, input: PostInput) {
+  const response = await apiRequest<{ post: FeedPost }>("/posts", {
+    method: "PATCH",
+    body: JSON.stringify({ ...input, id }),
+  });
+  return response.post;
+}
+
+export async function fetchNotifications() {
+  const response = await apiRequest<{ notifications: Notification[] }>("/notifications");
+  return response.notifications;
+}
+
+export async function markNotificationsRead() {
+  await apiRequest<{ status: string }>("/notifications", { method: "PATCH" });
+}
+
+export async function createCallSession(input: { roomId: string; mode: "voice" | "video" }) {
+  const response = await apiRequest<{ call: CallSession }>("/calls", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return response.call;
+}
+
+export async function updateCallSession(input: { id: number; action: "join" | "leave" | "end" }) {
+  const response = await apiRequest<{ call: CallSession }>("/calls", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return response.call;
+}
+
 export async function fetchProfile() {
   return apiRequest<ProfileResponse>("/profile");
 }
 
-export async function updateProfile(input: { name: string; bio: string; headline: string; location: string }) {
+export async function updateProfile(input: { name: string; bio: string; headline: string; location: string; avatarUrl?: string; coverUrl?: string; websiteUrl?: string }) {
   return apiRequest<ProfileResponse>("/profile", {
     method: "PATCH",
     body: JSON.stringify(input),

@@ -7,3 +7,5 @@ backend/.docker/bin/
 .runtime-bin/
 .local/
 apps/web/.expo/
+uploads/
+apps/api/uploads/

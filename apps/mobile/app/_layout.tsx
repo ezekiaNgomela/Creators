@@ -17,7 +17,10 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="notifications" options={{ presentation: "modal", title: "Notifications" }} />
         <Stack.Screen name="settings" options={{ presentation: "modal", title: "Settings" }} />
+        <Stack.Screen name="profile-tools/[toolId]" options={{ presentation: "modal", title: "Profile" }} />
+        <Stack.Screen name="posts/[postId]/edit" options={{ presentation: "modal", title: "Edit post" }} />
       </Stack>
     </AppProvider>
   );

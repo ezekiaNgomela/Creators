@@ -29,7 +29,9 @@ type HomeLayoutProps = {
   displayPosts: DisplayPost[];
   health: HealthResponse | null;
   liveRooms: LiveRoom[];
+  notificationCount: number;
   onOpenLive: (room: LiveRoom) => void;
+  onOpenNotifications: () => void;
   profile: ProfileResponse | null;
   sessionName?: string;
 };
@@ -38,7 +40,9 @@ export function HomeLayout({
   displayPosts,
   health,
   liveRooms,
+  notificationCount,
   onOpenLive,
+  onOpenNotifications,
   profile,
   sessionName,
 }: HomeLayoutProps) {
@@ -56,17 +60,17 @@ export function HomeLayout({
   }, [activeFilter, displayPosts]);
 
   const columns = useMemo(() => {
-    const count = width >= 1320 ? 3 : width >= 900 ? 2 : 1;
+    const count = width >= 1040 ? 3 : width >= 768 ? 2 : 1;
     return distributeIntoColumns(filteredPosts.slice(0, 9), count);
   }, [filteredPosts, width]);
 
   return (
-    <View style={{ gap: spacing.lg }}>
+    <View style={{ gap: spacing.sm }}>
       <View
         style={{
-          borderRadius: 34,
-          borderWidth: 1,
-          borderColor: homeColors.sectionBorder,
+          borderRadius: radius.xl, // Use token for consistency
+          borderWidth: 0, // Remove border for a cleaner look
+          // borderColor: homeColors.sectionBorder, // Removed
           backgroundColor: homeColors.section,
           padding: spacing.lg,
           gap: spacing.md,
@@ -94,16 +98,23 @@ export function HomeLayout({
 
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
             <TopAction icon="menu" onPress={() => router.push("/settings")} />
-            <TopAction icon="notifications-outline" badge="2" />
+            <TopAction
+              icon="notifications-outline"
+              badge={notificationCount ? String(notificationCount) : undefined}
+              onPress={() => {
+                onOpenNotifications();
+                router.push("/notifications" as never);
+              }}
+            />
           </View>
         </View>
 
         <ScrollView
           horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: spacing.sm, alignItems: "flex-start", paddingRight: spacing.sm }}
+          showsHorizontalScrollIndicator={false} // Ensure scrollbar is transparent
+          contentContainerStyle={{ gap: spacing.xs, alignItems: "flex-start", paddingRight: spacing.xs }}
         >
-          <StoryBubble kind="add" label="Add story" />
+          <StoryBubble kind="add" label="Add story" onPress={() => router.push("/(tabs)/studio")} />
           {liveRooms.map((room, index) => (
             <StoryBubble
               key={room.id}
@@ -120,13 +131,11 @@ export function HomeLayout({
           <Text style={{ color: homeColors.soft, fontSize: 12, fontWeight: "800" as const }}>
             {profile?.headline ?? "Creator stories"}
           </Text>
-          <Text style={{ color: homeColors.soft, fontSize: 12, fontWeight: "800" as const }}>
-            {health?.status === "ok" ? "Backend live" : "Syncing"}
-          </Text>
+
         </View>
       </View>
 
-      <ChannelsSlider channels={liveRooms} onOpenChannel={onOpenLive} />
+      <ChannelsSlider channels={liveRooms} onOpenChannel={onOpenLive} /> {/* ChannelsSlider already has minimal height adjustments */}
 
       <View
         style={{
@@ -134,18 +143,18 @@ export function HomeLayout({
           gap: 4,
           borderRadius: radius.pill,
           padding: 4,
-          backgroundColor: homeColors.filterBg,
+          backgroundColor: homeColors.filterBg, // Keep background for filter
         }}
       >
         {(["Local", "Global", "Trend"] as const).map((item) => {
           const active = item === activeFilter;
           return (
-            <Pressable
+            <Pressable // Keep filter buttons as they are, they are already minimal
               key={item}
               onPress={() => setActiveFilter(item)}
-              style={{
+              style={{ // Minimal height for filter buttons
                 flex: 1,
-                minHeight: 36,
+                minHeight: 28,
                 borderRadius: radius.pill,
                 alignItems: "center",
                 justifyContent: "center",
@@ -159,14 +168,6 @@ export function HomeLayout({
           );
         })}
       </View>
-
-      <View style={{ gap: spacing.sm }}>
-        <Text style={{ color: homeColors.ink, fontSize: 22, fontWeight: "900" as const }}>Home feed</Text>
-        <Text style={{ color: homeColors.soft, fontSize: 13 }}>
-          A softer editorial layout with better spacing, live discovery, and a cleaner gallery rhythm for posts.
-        </Text>
-      </View>
-
       <View style={{ flexDirection: columns.length > 1 ? "row" : "column", gap: spacing.md, alignItems: "flex-start" }}>
         {columns.map((column, index) => (
           <View
@@ -196,8 +197,8 @@ function TopAction({
     <Pressable
       onPress={onPress}
       style={{
-        width: 38,
-        height: 38,
+        width: 28, // Even smaller
+        height: 28, // Even smaller
         borderRadius: radius.pill,
         backgroundColor: homeColors.actionBg,
         alignItems: "center",
@@ -242,18 +243,18 @@ function StoryBubble({
 }) {
   if (kind === "add") {
     return (
-      <Pressable style={{ width: 64, alignItems: "center", gap: 6 }}>
-        <View
+      <Pressable onPress={onPress} style={{ width: 64, alignItems: "center", gap: 6 }}>
+        <View // Minimal height for add story bubble
           style={{
-            width: 52,
-            height: 52,
+            width: 44, // Smaller
+            height: 44, // Smaller
             borderRadius: radius.pill,
             backgroundColor: "rgba(255, 152, 111, 0.18)",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <Ionicons color={homeColors.accent} name="add" size={22} />
+          <Ionicons color={homeColors.accent} name="add" size={20} /> // Smaller icon
         </View>
         <Text numberOfLines={1} style={{ color: homeColors.soft, fontSize: 11, fontWeight: "800" as const }}>
           {label}
@@ -267,8 +268,8 @@ function StoryBubble({
       <LinearGradient
         colors={live ? [homeColors.accent, homeColors.accentStrong] : ["#e8d3c4", "#d5c0b0"]}
         style={{
-          width: 56,
-          height: 56,
+          width: 48, // Smaller
+          height: 48, // Smaller
           borderRadius: radius.pill,
           padding: 2,
         }}
@@ -280,12 +281,12 @@ function StoryBubble({
             backgroundColor: "#fff8f1",
             alignItems: "center",
             justifyContent: "center",
-            overflow: "hidden",
+            overflow: "hidden", // Keep overflow hidden
           }}
-        >
+        > {/* Minimal height for story image */}
           <Image
-            source={{ uri: `https://api.dicebear.com/8.x/lorelei/png?seed=${encodeURIComponent(seed ?? label)}` }}
-            style={{ width: 50, height: 50, borderRadius: radius.pill }}
+            source={{ uri: `https://api.dicebear.com/8.x/lorelei/png?seed=${encodeURIComponent(seed ?? label)}` }} // Keep image source
+            style={{ width: 44, height: 44, borderRadius: radius.pill }} // Smaller image
           />
         </View>
       </LinearGradient>

@@ -36,6 +36,7 @@ func main() {
 		Service:        &DataService{Pool: pool},
 		Redis:          redisClient,
 		MinioHealthURL: valueOrDefault("MINIO_HEALTH_URL", "http://127.0.0.1:9000/minio/health/live"),
+		UploadDir:      valueOrDefault("UPLOAD_DIR", "uploads"),
 		JWTSecret:      valueOrDefault("JWT_SECRET", "change-me"),
 		JWTIssuer:      valueOrDefault("JWT_ISSUER", "creators-auth"),
 	}
@@ -50,15 +51,20 @@ func main() {
 	mux.HandleFunc("/api/auth/google/start", handler.HandleGoogleStart)
 	mux.HandleFunc("/api/auth/google/callback", handler.HandleGoogleCallback)
 	mux.HandleFunc("/api/feed", handler.HandleFeed)
+	mux.HandleFunc("/api/media", handler.HandleMediaUpload)
 	mux.HandleFunc("/api/posts", handler.HandlePosts)
 	mux.HandleFunc("/api/profile", handler.HandleProfile)
 	mux.HandleFunc("/api/live", handler.HandleLive)
 	mux.HandleFunc("/api/live/rate", handler.HandleLiveRate)
+	mux.HandleFunc("/api/notifications", handler.HandleNotifications)
+	mux.HandleFunc("/api/calls", handler.HandleCalls)
+	mux.HandleFunc("/api/realtime", handler.HandleRealtime)
 	mux.HandleFunc("/api/comments", handler.HandleComments)
 	mux.HandleFunc("/api/users", handler.HandleUsers)
 	mux.HandleFunc("/api/chats", handler.HandleChats)
 	mux.HandleFunc("/api/chats/participants", handler.HandleChatParticipants)
 	mux.HandleFunc("/api/chats/messages", handler.HandleChatMessages)
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(handler.UploadDir))))
 
 	server := &http.Server{
 		Addr:              ":" + port,

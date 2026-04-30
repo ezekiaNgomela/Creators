@@ -14,6 +14,7 @@ type User struct {
 	Email        string
 	Name         string
 	Provider     string
+	AvatarURL    string
 	PasswordHash *string
 	CreatedAt    time.Time
 }
@@ -23,6 +24,7 @@ type AuthUser struct {
 	Email     string `json:"email"`
 	Name      string `json:"name"`
 	Provider  string `json:"provider"`
+	AvatarURL string `json:"avatarUrl"`
 	CreatedAt string `json:"createdAt"`
 }
 
@@ -36,6 +38,7 @@ type LiveRoom struct {
 	Title     string    `json:"title"`
 	Host      string    `json:"host"`
 	Topic     string    `json:"topic"`
+	CoverURL  string    `json:"coverUrl"`
 	Viewers   int       `json:"viewers"`
 	StartsAt  time.Time `json:"startsAt"`
 	Status    string    `json:"status"`
@@ -48,12 +51,22 @@ type FeedPost struct {
 	Body           string   `json:"body"`
 	Mood           string   `json:"mood"`
 	MediaURL       string   `json:"mediaUrl"`
+	MediaType      string   `json:"mediaType"`
 	FilterName     string   `json:"filterName"`
 	OverlayText    string   `json:"overlayText"`
 	Sticker        string   `json:"sticker"`
 	TextColor      string   `json:"textColor"`
 	BackgroundTone string   `json:"backgroundTone"`
 	AspectRatio    string   `json:"aspectRatio"`
+	CropZoom       float64  `json:"cropZoom"`
+	CropX          int      `json:"cropX"`
+	CropY          int      `json:"cropY"`
+	Rotation       int      `json:"rotation"`
+	CommentCount   int      `json:"commentCount"`
+	LikeCount      int      `json:"likeCount"`
+	PromotionScore int      `json:"promotionScore"`
+	Tags           []string `json:"tags"`
+	Gallery        []string `json:"gallery"`
 	Author         AuthUser `json:"author"`
 	CreatedAt      string   `json:"createdAt"`
 }
@@ -65,22 +78,58 @@ type FeedResponse struct {
 }
 
 type PostInput struct {
-	Body           string `json:"body"`
-	Mood           string `json:"mood"`
-	MediaURL       string `json:"mediaUrl"`
-	FilterName     string `json:"filterName"`
-	OverlayText    string `json:"overlayText"`
-	Sticker        string `json:"sticker"`
-	TextColor      string `json:"textColor"`
-	BackgroundTone string `json:"backgroundTone"`
-	AspectRatio    string `json:"aspectRatio"`
+	Body           string  `json:"body"`
+	Mood           string  `json:"mood"`
+	MediaURL       string  `json:"mediaUrl"`
+	MediaType      string  `json:"mediaType"`
+	FilterName     string  `json:"filterName"`
+	OverlayText    string  `json:"overlayText"`
+	Sticker        string  `json:"sticker"`
+	TextColor      string  `json:"textColor"`
+	BackgroundTone string  `json:"backgroundTone"`
+	AspectRatio    string  `json:"aspectRatio"`
+	CropZoom       float64 `json:"cropZoom"`
+	CropX          int     `json:"cropX"`
+	CropY          int     `json:"cropY"`
+	Rotation       int     `json:"rotation"`
+}
+
+type MediaUploadResponse struct {
+	URL       string `json:"url"`
+	MediaType string `json:"mediaType"`
+	MimeType  string `json:"mimeType"`
+	FileName  string `json:"fileName"`
+}
+
+type Notification struct {
+	ID        int64   `json:"id"`
+	Title     string  `json:"title"`
+	Body      string  `json:"body"`
+	Type      string  `json:"type"`
+	Link      string  `json:"link"`
+	ReadAt    *string `json:"readAt"`
+	CreatedAt string  `json:"createdAt"`
+}
+
+type CallSession struct {
+	ID           int64             `json:"id"`
+	RoomID       string            `json:"roomId"`
+	Mode         string            `json:"mode"`
+	Status       string            `json:"status"`
+	CreatedBy    AuthUser          `json:"createdBy"`
+	Participants []ChatParticipant `json:"participants"`
+	CreatedAt    string            `json:"createdAt"`
+	EndedAt      *string           `json:"endedAt"`
 }
 
 type ProfileResponse struct {
-	User     AuthUser `json:"user"`
-	Bio      string   `json:"bio"`
-	Headline string   `json:"headline"`
-	Location string   `json:"location"`
+	User       AuthUser `json:"user"`
+	Bio        string   `json:"bio"`
+	Headline   string   `json:"headline"`
+	Location   string   `json:"location"`
+	AvatarURL  string   `json:"avatarUrl"`
+	CoverURL   string   `json:"coverUrl"`
+	WebsiteURL string   `json:"websiteUrl"`
 }
 
 type CommentResponse struct {
@@ -147,6 +196,7 @@ func toAuthUser(user User) AuthUser {
 		Email:     user.Email,
 		Name:      user.Name,
 		Provider:  user.Provider,
+		AvatarURL: user.AvatarURL,
 		CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339),
 	}
 }

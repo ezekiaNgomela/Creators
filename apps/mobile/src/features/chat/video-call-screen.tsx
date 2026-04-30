@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { CallActionButton } from "@/src/features/chat/components/call-action-button";
@@ -10,13 +10,28 @@ import { useApp } from "@/src/providers/app-provider";
 import { radius, spacing } from "@/src/theme/tokens";
 
 export function VideoCallScreen() {
-  const { contactId } = useLocalSearchParams<{ contactId: string }>();
-  const { chatContacts } = useApp();
+  const { callId, contactId } = useLocalSearchParams<{ callId?: string; contactId: string }>();
+  const { activeCall, chatContacts, endCall, joinCall } = useApp();
 
   const contact = useMemo(
     () => chatContacts.find((item) => item.id === contactId) ?? null,
     [chatContacts, contactId],
   );
+  const currentCallId = Number(callId ?? activeCall?.id ?? 0);
+  const participantCount = activeCall?.participants.length ?? contact?.participantCount ?? 1;
+
+  useEffect(() => {
+    if (currentCallId) {
+      void joinCall(currentCallId);
+    }
+  }, [currentCallId]);
+
+  async function endCurrentCall() {
+    if (currentCallId) {
+      await endCall(currentCallId);
+    }
+    router.back();
+  }
 
   return (
     <>
@@ -27,11 +42,12 @@ export function VideoCallScreen() {
         style={{ flex: 1, backgroundColor: chatPalette.page }}
       >
         <View style={{ flex: 1, minHeight: 720 }}>
+          <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: chatPalette.page }} />
           <Image
-            source={{ uri: `https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1200&q=80&sig=video-${contactId}` }}
-            style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, width: "100%", height: "100%" }}
+            source={chatAvatar(contact?.name ?? contactId ?? "call")}
+            style={{ position: "absolute", alignSelf: "center", top: 150, width: 220, height: 220, borderRadius: radius.pill, opacity: 0.42 }}
           />
-          <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(7,13,20,0.28)" }} />
+          <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(7,13,20,0.58)" }} />
 
           <View style={{ padding: spacing.lg, gap: spacing.lg }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -42,10 +58,12 @@ export function VideoCallScreen() {
                 <Text style={{ color: chatPalette.ink, fontSize: 18, fontWeight: "900" as const }}>
                   {contact?.name ?? "Video call"}
                 </Text>
-                <Text style={{ color: "rgba(247,251,255,0.74)", fontSize: 12 }}>Connected - 05:42</Text>
+                <Text style={{ color: "rgba(247,251,255,0.74)", fontSize: 12 }}>
+                  {activeCall?.status ?? "connecting"} - {participantCount} in room
+                </Text>
               </View>
               <Pressable
-                onPress={() => router.replace({ pathname: "/conversations/[contactId]/voice", params: { contactId: contactId ?? "" } })}
+                onPress={() => router.replace({ pathname: "/conversations/[contactId]/voice", params: { callId: callId ?? "", contactId: contactId ?? "" } })}
                 style={videoAction}
               >
                 <Ionicons color={chatPalette.ink} name="call-outline" size={18} />
@@ -97,14 +115,14 @@ export function VideoCallScreen() {
               }}
             >
               <Text style={{ color: chatPalette.ink, fontSize: 12, fontWeight: "800" as const }}>
-                Showcase call with {contact?.name ?? "creator"}
+                Protected video room with {contact?.name ?? "creator"}
               </Text>
             </View>
 
             <View style={{ flexDirection: "row", justifyContent: "center", gap: spacing.md, flexWrap: "wrap" }}>
               <CallActionButton glass icon="mic-off-outline" label="Mute" />
               <CallActionButton glass icon="videocam-off-outline" label="Camera" />
-              <CallActionButton icon="call" label="End" tone="danger" />
+              <CallActionButton icon="call" label="End" onPress={() => void endCurrentCall()} tone="danger" />
             </View>
           </View>
         </View>

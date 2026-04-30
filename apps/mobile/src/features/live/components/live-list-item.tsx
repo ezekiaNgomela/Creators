@@ -36,7 +36,7 @@ export function LiveListItem({
       }}
     >
       <Image
-        source={{ uri: `https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=500&q=80&sig=list-${room.id}` }}
+        source={{ uri: room.coverUrl }}
         style={{ width: 72, height: 72, borderRadius: 18 }}
       />
 
@@ -44,14 +44,14 @@ export function LiveListItem({
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: rowColors.accentAlt }} />
           <Text style={{ color: rowColors.soft, fontSize: 11, fontWeight: "900" as const }}>
-            {Math.max(18, Math.floor(room.viewers / 1000))}k live now
+            {new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(room.viewers)} live now
           </Text>
         </View>
         <Text numberOfLines={1} style={{ color: rowColors.ink, fontSize: 16, fontWeight: "900" as const }}>
           {room.title}
         </Text>
         <Text numberOfLines={1} style={{ color: rowColors.soft, fontSize: 12 }}>
-          {room.host} · {room.topic}
+          {room.host} - {room.topic}
         </Text>
       </View>
 

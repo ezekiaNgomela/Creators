@@ -209,21 +209,34 @@ func (s *DataService) ListPosts(ctx context.Context) ([]FeedPost, error) {
 			p.body,
 			p.mood,
 			p.media_url,
+			p.media_type,
 			p.filter_name,
 			p.overlay_text,
 			p.sticker,
 			p.text_color,
 			p.background_tone,
 			p.aspect_ratio,
+			p.crop_zoom,
+			p.crop_x,
+			p.crop_y,
+			p.rotation,
+			COALESCE(comment_stats.comment_count, 0),
 			p.created_at,
 			u.id,
 			u.email,
 			u.name,
 			u.provider,
+			COALESCE(up.avatar_url, ''),
 			u.password_hash,
 			u.created_at
 		FROM posts p
 		JOIN users u ON u.id = p.author_id
+		LEFT JOIN user_profiles up ON up.user_id = u.id
+		LEFT JOIN LATERAL (
+			SELECT COUNT(*)::int AS comment_count
+			FROM comments c
+			WHERE c.target_type = 'post' AND c.target_id = p.id
+		) comment_stats ON TRUE
 		ORDER BY p.created_at DESC, p.id DESC
 		LIMIT 50
 	`)
@@ -242,17 +255,24 @@ func (s *DataService) ListPosts(ctx context.Context) ([]FeedPost, error) {
 			&post.Body,
 			&post.Mood,
 			&post.MediaURL,
+			&post.MediaType,
 			&post.FilterName,
 			&post.OverlayText,
 			&post.Sticker,
 			&post.TextColor,
 			&post.BackgroundTone,
 			&post.AspectRatio,
+			&post.CropZoom,
+			&post.CropX,
+			&post.CropY,
+			&post.Rotation,
+			&post.CommentCount,
 			&createdAt,
 			&author.ID,
 			&author.Email,
 			&author.Name,
 			&author.Provider,
+			&author.AvatarURL,
 			&author.PasswordHash,
 			&author.CreatedAt,
 		); err != nil {
@@ -260,15 +280,76 @@ func (s *DataService) ListPosts(ctx context.Context) ([]FeedPost, error) {
 		}
 		post.Author = toAuthUser(author)
 		post.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		decoratePost(&post)
 		posts = append(posts, post)
 	}
 	return posts, rows.Err()
 }
 
 func (s *DataService) CreatePost(ctx context.Context, userID int64, input PostInput) (FeedPost, error) {
+	var err error
+	input, err = normalizePostInput(input)
+	if err != nil {
+		return FeedPost{}, err
+	}
+
+	var postID int64
+	if err := s.Pool.QueryRow(ctx, `
+		INSERT INTO posts (
+			author_id, body, mood, media_url, media_type, filter_name, overlay_text,
+			sticker, text_color, background_tone, aspect_ratio, crop_zoom, crop_x, crop_y, rotation
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		RETURNING id
+	`, userID, input.Body, input.Mood, input.MediaURL, input.MediaType, input.FilterName, input.OverlayText, input.Sticker, input.TextColor, input.BackgroundTone, input.AspectRatio, input.CropZoom, input.CropX, input.CropY, input.Rotation).Scan(&postID); err != nil {
+		return FeedPost{}, err
+	}
+	return s.FindPost(ctx, postID)
+}
+
+func (s *DataService) UpdatePost(ctx context.Context, userID int64, postID int64, input PostInput) (FeedPost, error) {
+	if postID <= 0 {
+		return FeedPost{}, errors.New("post id is required")
+	}
+
+	var err error
+	input, err = normalizePostInput(input)
+	if err != nil {
+		return FeedPost{}, err
+	}
+
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE posts
+		SET body = $3,
+			mood = $4,
+			media_url = $5,
+			media_type = $6,
+			filter_name = $7,
+			overlay_text = $8,
+			sticker = $9,
+			text_color = $10,
+			background_tone = $11,
+			aspect_ratio = $12,
+			crop_zoom = $13,
+			crop_x = $14,
+			crop_y = $15,
+			rotation = $16
+		WHERE id = $1 AND author_id = $2
+	`, postID, userID, input.Body, input.Mood, input.MediaURL, input.MediaType, input.FilterName, input.OverlayText, input.Sticker, input.TextColor, input.BackgroundTone, input.AspectRatio, input.CropZoom, input.CropX, input.CropY, input.Rotation)
+	if err != nil {
+		return FeedPost{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return FeedPost{}, pgx.ErrNoRows
+	}
+	return s.FindPost(ctx, postID)
+}
+
+func normalizePostInput(input PostInput) (PostInput, error) {
 	input.Body = strings.TrimSpace(input.Body)
 	input.Mood = strings.TrimSpace(input.Mood)
 	input.MediaURL = strings.TrimSpace(input.MediaURL)
+	input.MediaType = strings.TrimSpace(input.MediaType)
 	input.FilterName = strings.TrimSpace(input.FilterName)
 	input.OverlayText = strings.TrimSpace(input.OverlayText)
 	input.Sticker = strings.TrimSpace(input.Sticker)
@@ -277,10 +358,16 @@ func (s *DataService) CreatePost(ctx context.Context, userID int64, input PostIn
 	input.AspectRatio = strings.TrimSpace(input.AspectRatio)
 
 	if input.Body == "" {
-		return FeedPost{}, errors.New("post body is required")
+		return PostInput{}, errors.New("post body is required")
 	}
 	if input.Mood == "" {
 		input.Mood = "Update"
+	}
+	if input.MediaType == "" {
+		input.MediaType = "image"
+	}
+	if input.MediaType != "image" && input.MediaType != "video" {
+		return PostInput{}, errors.New("mediaType must be image or video")
 	}
 	if input.FilterName == "" {
 		input.FilterName = "Original"
@@ -294,19 +381,17 @@ func (s *DataService) CreatePost(ctx context.Context, userID int64, input PostIn
 	if input.AspectRatio == "" {
 		input.AspectRatio = "4:5"
 	}
-
-	var postID int64
-	if err := s.Pool.QueryRow(ctx, `
-		INSERT INTO posts (
-			author_id, body, mood, media_url, filter_name, overlay_text,
-			sticker, text_color, background_tone, aspect_ratio
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id
-	`, userID, input.Body, input.Mood, input.MediaURL, input.FilterName, input.OverlayText, input.Sticker, input.TextColor, input.BackgroundTone, input.AspectRatio).Scan(&postID); err != nil {
-		return FeedPost{}, err
+	if input.CropZoom <= 0 {
+		input.CropZoom = 1
 	}
-	return s.FindPost(ctx, postID)
+	if input.CropX <= 0 {
+		input.CropX = 50
+	}
+	if input.CropY <= 0 {
+		input.CropY = 50
+	}
+
+	return input, nil
 }
 
 func (s *DataService) FindPost(ctx context.Context, postID int64) (FeedPost, error) {
@@ -319,38 +404,58 @@ func (s *DataService) FindPost(ctx context.Context, postID int64) (FeedPost, err
 			p.body,
 			p.mood,
 			p.media_url,
+			p.media_type,
 			p.filter_name,
 			p.overlay_text,
 			p.sticker,
 			p.text_color,
 			p.background_tone,
 			p.aspect_ratio,
+			p.crop_zoom,
+			p.crop_x,
+			p.crop_y,
+			p.rotation,
+			COALESCE(comment_stats.comment_count, 0),
 			p.created_at,
 			u.id,
 			u.email,
 			u.name,
 			u.provider,
+			COALESCE(up.avatar_url, ''),
 			u.password_hash,
 			u.created_at
 		FROM posts p
 		JOIN users u ON u.id = p.author_id
+		LEFT JOIN user_profiles up ON up.user_id = u.id
+		LEFT JOIN LATERAL (
+			SELECT COUNT(*)::int AS comment_count
+			FROM comments c
+			WHERE c.target_type = 'post' AND c.target_id = p.id
+		) comment_stats ON TRUE
 		WHERE p.id = $1
 	`, postID).Scan(
 		&post.ID,
 		&post.Body,
 		&post.Mood,
 		&post.MediaURL,
+		&post.MediaType,
 		&post.FilterName,
 		&post.OverlayText,
 		&post.Sticker,
 		&post.TextColor,
 		&post.BackgroundTone,
 		&post.AspectRatio,
+		&post.CropZoom,
+		&post.CropX,
+		&post.CropY,
+		&post.Rotation,
+		&post.CommentCount,
 		&createdAt,
 		&author.ID,
 		&author.Email,
 		&author.Name,
 		&author.Provider,
+		&author.AvatarURL,
 		&author.PasswordHash,
 		&author.CreatedAt,
 	)
@@ -359,12 +464,63 @@ func (s *DataService) FindPost(ctx context.Context, postID int64) (FeedPost, err
 	}
 	post.Author = toAuthUser(author)
 	post.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+	decoratePost(&post)
 	return post, nil
+}
+
+func decoratePost(post *FeedPost) {
+	post.LikeCount = 0
+	post.Gallery = []string{}
+	if post.MediaURL != "" {
+		post.Gallery = append(post.Gallery, post.MediaURL)
+	}
+
+	score := post.CommentCount * 8
+	if post.MediaURL != "" {
+		score += 12
+	}
+	if post.OverlayText != "" {
+		score += 4
+	}
+	if post.Sticker != "" {
+		score += 3
+	}
+	post.PromotionScore = clampInt(score, 0, 100)
+
+	tags := []string{}
+	if tag := slugTag(post.Mood); tag != "" {
+		tags = append(tags, tag)
+	}
+	if post.MediaType != "" {
+		tags = append(tags, post.MediaType)
+	}
+	post.Tags = tags
+}
+
+func slugTag(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	})
+	return strings.Join(parts, "")
+}
+
+func clampInt(value int, minValue int, maxValue int) int {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
 }
 
 func (s *DataService) ListLiveRooms(ctx context.Context) ([]LiveRoom, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT id, title, host, topic, viewers, starts_at, status, accent, updated_at
+		SELECT id, title, host, topic, cover_url, viewers, starts_at, status, accent, updated_at
 		FROM live_rooms
 		ORDER BY
 			CASE status
@@ -389,6 +545,7 @@ func (s *DataService) ListLiveRooms(ctx context.Context) ([]LiveRoom, error) {
 			&room.Title,
 			&room.Host,
 			&room.Topic,
+			&room.CoverURL,
 			&room.Viewers,
 			&room.StartsAt,
 			&room.Status,
@@ -498,6 +655,241 @@ func (s *DataService) RateLiveRoom(ctx context.Context, userID int64, roomID int
 	return LiveRating{}, pgx.ErrNoRows
 }
 
+func (s *DataService) ListNotifications(ctx context.Context, userID int64) ([]Notification, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT id, title, body, type, link, read_at, created_at
+		FROM notifications
+		WHERE user_id = $1
+		ORDER BY created_at DESC, id DESC
+		LIMIT 50
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	notifications := make([]Notification, 0)
+	for rows.Next() {
+		var notification Notification
+		var readAt *time.Time
+		var createdAt time.Time
+		if err := rows.Scan(
+			&notification.ID,
+			&notification.Title,
+			&notification.Body,
+			&notification.Type,
+			&notification.Link,
+			&readAt,
+			&createdAt,
+		); err != nil {
+			return nil, err
+		}
+		if readAt != nil {
+			value := readAt.UTC().Format(time.RFC3339)
+			notification.ReadAt = &value
+		}
+		notification.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		notifications = append(notifications, notification)
+	}
+	return notifications, rows.Err()
+}
+
+func (s *DataService) CreateNotification(ctx context.Context, userID int64, title string, body string, notificationType string, link string) (Notification, error) {
+	title = strings.TrimSpace(title)
+	body = strings.TrimSpace(body)
+	notificationType = strings.TrimSpace(notificationType)
+	link = strings.TrimSpace(link)
+	if title == "" {
+		return Notification{}, errors.New("notification title is required")
+	}
+	if notificationType == "" {
+		notificationType = "system"
+	}
+
+	var id int64
+	if err := s.Pool.QueryRow(ctx, `
+		INSERT INTO notifications (user_id, title, body, type, link)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`, userID, title, body, notificationType, link).Scan(&id); err != nil {
+		return Notification{}, err
+	}
+	notifications, err := s.ListNotifications(ctx, userID)
+	if err != nil {
+		return Notification{}, err
+	}
+	for _, notification := range notifications {
+		if notification.ID == id {
+			return notification, nil
+		}
+	}
+	return Notification{}, pgx.ErrNoRows
+}
+
+func (s *DataService) MarkNotificationsRead(ctx context.Context, userID int64) error {
+	_, err := s.Pool.Exec(ctx, `
+		UPDATE notifications
+		SET read_at = COALESCE(read_at, now())
+		WHERE user_id = $1
+	`, userID)
+	return err
+}
+
+func (s *DataService) CreateCallSession(ctx context.Context, userID int64, roomID string, mode string) (CallSession, error) {
+	mode = strings.TrimSpace(mode)
+	if mode != "voice" && mode != "video" {
+		return CallSession{}, errors.New("mode must be voice or video")
+	}
+	roomNumber, err := parseRoomID(roomID)
+	if err != nil {
+		return CallSession{}, err
+	}
+	if err := s.ensureRoomMembership(ctx, roomNumber, userID); err != nil {
+		return CallSession{}, err
+	}
+
+	var callID int64
+	if err := s.Pool.QueryRow(ctx, `
+		INSERT INTO call_sessions (room_id, created_by, mode, status)
+		VALUES ($1, $2, $3, 'ringing')
+		RETURNING id
+	`, roomNumber, userID, mode).Scan(&callID); err != nil {
+		return CallSession{}, err
+	}
+	if _, err := s.Pool.Exec(ctx, `
+		INSERT INTO call_participants (call_id, user_id, status, joined_at)
+		SELECT $1, p.user_id, CASE WHEN p.user_id = $2 THEN 'joined' ELSE 'invited' END,
+			CASE WHEN p.user_id = $2 THEN now() ELSE NULL END
+		FROM chat_room_participants p
+		WHERE p.room_id = $3
+		ON CONFLICT (call_id, user_id) DO NOTHING
+	`, callID, userID, roomNumber); err != nil {
+		return CallSession{}, err
+	}
+	return s.FindCallSession(ctx, userID, callID)
+}
+
+func (s *DataService) JoinCallSession(ctx context.Context, userID int64, callID int64) (CallSession, error) {
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE call_participants
+		SET status = 'joined', joined_at = COALESCE(joined_at, now())
+		WHERE call_id = $1 AND user_id = $2
+	`, callID, userID)
+	if err != nil {
+		return CallSession{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return CallSession{}, errors.New("call session is not available to this user")
+	}
+	if _, err := s.Pool.Exec(ctx, `
+		UPDATE call_sessions
+		SET status = 'active'
+		WHERE id = $1 AND status <> 'ended'
+	`, callID); err != nil {
+		return CallSession{}, err
+	}
+	return s.FindCallSession(ctx, userID, callID)
+}
+
+func (s *DataService) EndCallSession(ctx context.Context, userID int64, callID int64) (CallSession, error) {
+	if _, err := s.Pool.Exec(ctx, `
+		UPDATE call_participants
+		SET status = 'left', left_at = COALESCE(left_at, now())
+		WHERE call_id = $1 AND user_id = $2
+	`, callID, userID); err != nil {
+		return CallSession{}, err
+	}
+	if _, err := s.Pool.Exec(ctx, `
+		UPDATE call_sessions
+		SET status = 'ended', ended_at = COALESCE(ended_at, now())
+		WHERE id = $1 AND created_by = $2
+	`, callID, userID); err != nil {
+		return CallSession{}, err
+	}
+	return s.FindCallSession(ctx, userID, callID)
+}
+
+func (s *DataService) FindCallSession(ctx context.Context, userID int64, callID int64) (CallSession, error) {
+	var session CallSession
+	var roomNumber int64
+	var createdBy User
+	var createdAt time.Time
+	var endedAt *time.Time
+	err := s.Pool.QueryRow(ctx, `
+		SELECT
+			c.id,
+			c.room_id,
+			c.mode,
+			c.status,
+			c.created_at,
+			c.ended_at,
+			u.id,
+			u.email,
+			u.name,
+			u.provider,
+			u.password_hash,
+			u.created_at
+		FROM call_sessions c
+		JOIN call_participants me ON me.call_id = c.id AND me.user_id = $1
+		JOIN users u ON u.id = c.created_by
+		WHERE c.id = $2
+	`, userID, callID).Scan(
+		&session.ID,
+		&roomNumber,
+		&session.Mode,
+		&session.Status,
+		&createdAt,
+		&endedAt,
+		&createdBy.ID,
+		&createdBy.Email,
+		&createdBy.Name,
+		&createdBy.Provider,
+		&createdBy.PasswordHash,
+		&createdBy.CreatedAt,
+	)
+	if err != nil {
+		return CallSession{}, err
+	}
+	session.RoomID = fmt.Sprint(roomNumber)
+	session.CreatedBy = toAuthUser(createdBy)
+	session.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+	if endedAt != nil {
+		value := endedAt.UTC().Format(time.RFC3339)
+		session.EndedAt = &value
+	}
+
+	participants, err := s.callParticipants(ctx, callID)
+	if err != nil {
+		return CallSession{}, err
+	}
+	session.Participants = participants
+	return session, nil
+}
+
+func (s *DataService) callParticipants(ctx context.Context, callID int64) ([]ChatParticipant, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT u.id, u.name, u.email
+		FROM call_participants p
+		JOIN users u ON u.id = p.user_id
+		WHERE p.call_id = $1
+		ORDER BY CASE p.status WHEN 'joined' THEN 0 WHEN 'invited' THEN 1 ELSE 2 END, u.name
+	`, callID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	participants := make([]ChatParticipant, 0)
+	for rows.Next() {
+		var participant ChatParticipant
+		if err := rows.Scan(&participant.ID, &participant.Name, &participant.Email); err != nil {
+			return nil, err
+		}
+		participants = append(participants, participant)
+	}
+	return participants, rows.Err()
+}
+
 func (s *DataService) Profile(ctx context.Context, userID int64) (ProfileResponse, error) {
 	if err := s.EnsureUserRecords(ctx, userID); err != nil {
 		return ProfileResponse{}, err
@@ -511,11 +903,15 @@ func (s *DataService) Profile(ctx context.Context, userID int64) (ProfileRespons
 			u.email,
 			u.name,
 			u.provider,
+			COALESCE(p.avatar_url, ''),
 			u.password_hash,
 			u.created_at,
 			p.bio,
 			p.headline,
-			p.location
+			p.location,
+			p.avatar_url,
+			p.cover_url,
+			p.website_url
 		FROM users u
 		JOIN user_profiles p ON p.user_id = u.id
 		WHERE u.id = $1
@@ -524,11 +920,15 @@ func (s *DataService) Profile(ctx context.Context, userID int64) (ProfileRespons
 		&user.Email,
 		&user.Name,
 		&user.Provider,
+		&user.AvatarURL,
 		&user.PasswordHash,
 		&user.CreatedAt,
 		&profile.Bio,
 		&profile.Headline,
 		&profile.Location,
+		&profile.AvatarURL,
+		&profile.CoverURL,
+		&profile.WebsiteURL,
 	)
 	if err != nil {
 		return ProfileResponse{}, err
@@ -537,8 +937,11 @@ func (s *DataService) Profile(ctx context.Context, userID int64) (ProfileRespons
 	return profile, nil
 }
 
-func (s *DataService) UpdateProfile(ctx context.Context, userID int64, name string, bio string, headline string, location string) (ProfileResponse, error) {
+func (s *DataService) UpdateProfile(ctx context.Context, userID int64, name string, bio string, headline string, location string, avatarURL string, coverURL string, websiteURL string) (ProfileResponse, error) {
 	name = strings.TrimSpace(name)
+	avatarURL = strings.TrimSpace(avatarURL)
+	coverURL = strings.TrimSpace(coverURL)
+	websiteURL = strings.TrimSpace(websiteURL)
 	if name == "" {
 		return ProfileResponse{}, errors.New("name is required")
 	}
@@ -557,14 +960,17 @@ func (s *DataService) UpdateProfile(ctx context.Context, userID int64, name stri
 		return ProfileResponse{}, err
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO user_profiles (user_id, bio, headline, location)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO user_profiles (user_id, bio, headline, location, avatar_url, cover_url, website_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_id) DO UPDATE
 		SET bio = EXCLUDED.bio,
 			headline = EXCLUDED.headline,
 			location = EXCLUDED.location,
+			avatar_url = EXCLUDED.avatar_url,
+			cover_url = EXCLUDED.cover_url,
+			website_url = EXCLUDED.website_url,
 			updated_at = now()
-	`, userID, strings.TrimSpace(bio), strings.TrimSpace(headline), strings.TrimSpace(location)); err != nil {
+	`, userID, strings.TrimSpace(bio), strings.TrimSpace(headline), strings.TrimSpace(location), avatarURL, coverURL, websiteURL); err != nil {
 		return ProfileResponse{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

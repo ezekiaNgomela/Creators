@@ -12,25 +12,34 @@ import {
   InputBase,
   LinearProgress,
   Paper,
-  Stack,
 } from "@mui/material";
 import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import AutoAwesomeRounded from "@mui/icons-material/AutoAwesomeRounded";
 import CommentRounded from "@mui/icons-material/CommentRounded";
+import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
+import Crop169Rounded from "@mui/icons-material/Crop169Rounded";
+import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import EmojiEmotionsRounded from "@mui/icons-material/EmojiEmotionsRounded";
 import FavoriteRounded from "@mui/icons-material/FavoriteRounded";
 import ForumRounded from "@mui/icons-material/ForumRounded";
 import GroupsRounded from "@mui/icons-material/GroupsRounded";
+import ImageRounded from "@mui/icons-material/ImageRounded";
+import LayersRounded from "@mui/icons-material/LayersRounded";
 import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
+import MovieRounded from "@mui/icons-material/MovieRounded";
 import NorthEastRounded from "@mui/icons-material/NorthEastRounded";
 import PhoneRounded from "@mui/icons-material/PhoneRounded";
 import PersonAddAlt1Rounded from "@mui/icons-material/PersonAddAlt1Rounded";
 import PersonRemoveRounded from "@mui/icons-material/PersonRemoveRounded";
 import PlayCircleRounded from "@mui/icons-material/PlayCircleRounded";
+import SaveRounded from "@mui/icons-material/SaveRounded";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
 import SendRounded from "@mui/icons-material/SendRounded";
 import SettingsRounded from "@mui/icons-material/SettingsRounded";
+import TextFieldsRounded from "@mui/icons-material/TextFieldsRounded";
+import TuneRounded from "@mui/icons-material/TuneRounded";
+import UndoRounded from "@mui/icons-material/UndoRounded";
 import VideocamOutlined from "@mui/icons-material/VideocamOutlined";
 import VideocamRounded from "@mui/icons-material/VideocamRounded";
 import {
@@ -38,6 +47,7 @@ import {
   addUsersToChatRoom,
   createChatRoom,
   createComment,
+  createCallSession,
   createPost,
   fetchCurrentUser,
   fetchChatContacts,
@@ -47,15 +57,19 @@ import {
   fetchFeed,
   fetchHealth,
   fetchLiveIndex,
+  fetchNotifications,
   fetchProfile,
   getGoogleAuthUrl,
   loginAccount,
   logoutAccount,
+  markNotificationsRead,
   rateLiveRoom,
   registerAccount,
   sendChatMessage,
   storeToken,
+  updatePost,
   updateProfile,
+  uploadMedia,
   type AuthUser,
   type ChatContact,
   type ChatMessage,
@@ -66,6 +80,8 @@ import {
   type LiveIndex,
   type LiveRating,
   type LiveRoom,
+  type CallSession,
+  type Notification,
   type PostInput,
   type ProfileResponse,
 } from "./api";
@@ -74,6 +90,8 @@ type AuthMode = "login" | "register";
 type HomeTab = "home" | "streams" | "messages" | "studio" | "profiles";
 type ProfileView = "profile" | "settings";
 type ThemeName = "default" | "dark" | "beautiful" | "blueish" | "greenish" | "whiteish";
+type StudioTool = "media" | "adjust" | "text" | "layers" | "timeline" | "publish";
+type FeedMode = "Local" | "Global" | "Trend";
 
 type DisplayPost = FeedPost & {
   comments: number;
@@ -97,43 +115,43 @@ const themeOptions: Array<{
   caption: string;
   swatches: [string, string, string];
 }> = [
-  {
-    id: "default",
-    label: "Default",
-    caption: "Night sky blue",
-    swatches: ["#79a7ff", "#1a2951", "#090f1d"],
-  },
-  {
-    id: "dark",
-    label: "Dark",
-    caption: "Classic dark mood",
-    swatches: ["#ff5b7e", "#1b2230", "#0d111a"],
-  },
-  {
-    id: "beautiful",
-    label: "Beautiful",
-    caption: "Neon dusk glow",
-    swatches: ["#ff8e68", "#ff4d86", "#2d234f"],
-  },
-  {
-    id: "blueish",
-    label: "Blueish",
-    caption: "Cool electric blue",
-    swatches: ["#60c7ff", "#3467ff", "#102347"],
-  },
-  {
-    id: "greenish",
-    label: "Greenish",
-    caption: "Emerald aurora",
-    swatches: ["#65f2c4", "#1fb28f", "#0f2630"],
-  },
-  {
-    id: "whiteish",
-    label: "Whiteish",
-    caption: "Smoke white",
-    swatches: ["#ffffff", "#e5e7eb", "#cdd3dc"],
-  },
-];
+    {
+      id: "default",
+      label: "Default",
+      caption: "Night sky blue",
+      swatches: ["#79a7ff", "#1a2951", "#090f1d"],
+    },
+    {
+      id: "dark",
+      label: "Dark",
+      caption: "Classic dark mood",
+      swatches: ["#ff5b7e", "#1b2230", "#0d111a"],
+    },
+    {
+      id: "beautiful",
+      label: "Beautiful",
+      caption: "Neon dusk glow",
+      swatches: ["#ff8e68", "#ff4d86", "#2d234f"],
+    },
+    {
+      id: "blueish",
+      label: "Blueish",
+      caption: "Cool electric blue",
+      swatches: ["#60c7ff", "#3467ff", "#102347"],
+    },
+    {
+      id: "greenish",
+      label: "Greenish",
+      caption: "Emerald aurora",
+      swatches: ["#65f2c4", "#1fb28f", "#0f2630"],
+    },
+    {
+      id: "whiteish",
+      label: "Whiteish",
+      caption: "Smoke white",
+      swatches: ["#ffffff", "#e5e7eb", "#cdd3dc"],
+    },
+  ];
 
 const THEME_STORAGE_KEY = "creators-theme";
 const quickEmoji = [":sparkles:", ":fire:", ":heart:", ":raised_hands:", ":zap:"];
@@ -142,21 +160,18 @@ type StudioDraft = {
   body: string;
   mood: string;
   mediaUrl: string;
+  mediaType: "image" | "video";
   filterName: string;
   overlayText: string;
   sticker: string;
   textColor: string;
   backgroundTone: string;
   aspectRatio: string;
+  cropZoom: number;
+  cropX: number;
+  cropY: number;
+  rotation: number;
 };
-
-const studioMediaOptions = [
-  "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=84",
-  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=84",
-  "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=84",
-  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=84",
-  "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=84",
-];
 
 const studioFilters = [
   { name: "Original", css: "none" },
@@ -174,19 +189,33 @@ const studioTones = [
   { id: "emerald", label: "Emerald" },
   { id: "violet", label: "Violet" },
 ];
-const studioAspectRatios = ["4:5", "1:1", "9:16"];
+const studioAspectRatios = ["4:5", "1:1", "9:16", "16:9"];
+const studioTools: Array<{ id: StudioTool; label: string; icon: ReactNode }> = [
+  { id: "media", label: "Media", icon: <ImageRounded /> },
+  { id: "adjust", label: "Adjust", icon: <TuneRounded /> },
+  { id: "text", label: "Text", icon: <TextFieldsRounded /> },
+  { id: "layers", label: "Layers", icon: <LayersRounded /> },
+  { id: "timeline", label: "Timeline", icon: <MovieRounded /> },
+  { id: "publish", label: "Publish", icon: <SendRounded /> },
+];
+const studioTimelineTicks = ["00:00", "00:03", "00:06", "00:09", "00:12", "00:15"];
 
 function createStudioDraft(): StudioDraft {
   return {
     body: "",
     mood: "Behind the scenes",
-    mediaUrl: studioMediaOptions[0],
+    mediaUrl: "",
+    mediaType: "image",
     filterName: studioFilters[0].name,
     overlayText: "New drop",
     sticker: studioStickers[0],
     textColor: studioTextColors[0],
     backgroundTone: studioTones[0].id,
     aspectRatio: studioAspectRatios[0],
+    cropZoom: 1,
+    cropX: 50,
+    cropY: 50,
+    rotation: 0,
   };
 }
 
@@ -414,10 +443,16 @@ function HomeApp({
   const [chatUsers, setChatUsers] = useState<ChatUser[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [feedError, setFeedError] = useState("");
+  const [feedMode, setFeedMode] = useState<FeedMode>("Trend");
   const [followCounts, setFollowCounts] = useState<Record<string, number>>({});
   const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
+  const [editingPost, setEditingPost] = useState<DisplayPost | null>(null);
   const [liveIndex, setLiveIndex] = useState<LiveIndex | null>(null);
   const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [activeCall, setActiveCall] = useState<CallSession | null>(null);
+  const [callStatus, setCallStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
@@ -427,6 +462,20 @@ function HomeApp({
   const [selectedThreadId, setSelectedThreadId] = useState("");
 
   const displayPosts = useMemo(() => createDisplayPosts(posts), [posts]);
+  const homePosts = useMemo(() => {
+    const sorted = [...displayPosts];
+    if (feedMode === "Local") {
+      return sorted.sort((left, right) => {
+        const leftOwn = left.author.id === user.id ? 1 : 0;
+        const rightOwn = right.author.id === user.id ? 1 : 0;
+        return rightOwn - leftOwn || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+      });
+    }
+    if (feedMode === "Global") {
+      return sorted.sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+    }
+    return sorted.sort((left, right) => right.promotionScore - left.promotionScore || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+  }, [displayPosts, feedMode, user.id]);
   const selectedLive = liveRooms.find((room) => room.id === selectedLiveId) ?? liveRooms[0] ?? null;
   const ratingsByLiveId = useMemo(() => {
     const ratings = new Map<number, LiveRating>();
@@ -438,12 +487,13 @@ function HomeApp({
     setLoading(true);
     setFeedError("");
     try {
-      const [feed, nextLiveIndex, nextProfile, nextContacts, nextChatUsers] = await Promise.all([
+      const [feed, nextLiveIndex, nextProfile, nextContacts, nextChatUsers, nextNotifications] = await Promise.all([
         fetchFeed(),
         fetchLiveIndex(),
         fetchProfile(),
         fetchChatContacts(),
         fetchChatUsers(),
+        fetchNotifications(),
       ]);
       setLiveRooms(feed.liveRooms);
       setPosts(feed.posts);
@@ -451,6 +501,7 @@ function HomeApp({
       setProfile(nextProfile);
       setChatContacts(nextContacts);
       setChatUsers(nextChatUsers);
+      setNotifications(nextNotifications);
 
       const nextThreadId = nextContacts.some((contact) => contact.id === selectedThreadId)
         ? selectedThreadId
@@ -561,14 +612,71 @@ function HomeApp({
     setChatContacts(await fetchChatContacts());
   }
 
-  async function saveProfile(input: { name: string; bio: string; headline: string; location: string }) {
-    setProfile(await updateProfile(input));
+  async function saveProfile(input: { name: string; bio: string; headline: string; location: string; avatarUrl?: string; coverUrl?: string; websiteUrl?: string }) {
+    const nextProfile = await updateProfile(input);
+    setProfile(nextProfile);
+    setPosts((current) => current.map((post) => (post.author.id === nextProfile.user.id ? { ...post, author: nextProfile.user } : post)));
   }
 
   async function publishStudioPost(input: PostInput) {
     const post = await createPost(input);
     setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+    setNotifications(await fetchNotifications());
     return post;
+  }
+
+  async function updateStudioPost(postId: number, input: PostInput) {
+    const post = await updatePost(postId, input);
+    setPosts((current) => current.map((item) => (item.id === post.id ? post : item)));
+    setNotifications(await fetchNotifications());
+    return post;
+  }
+
+  async function uploadStudioFile(file: File) {
+    return uploadMedia(file);
+  }
+
+  async function openNotifications() {
+    setNotificationOpen((value) => !value);
+    if (!notificationOpen) {
+      await markNotificationsRead();
+      setNotifications(await fetchNotifications());
+    }
+  }
+
+  async function startThreadCall(mode: "voice" | "video") {
+    if (!selectedThreadId) {
+      setCallStatus("Open a chat first.");
+      return;
+    }
+    setCallStatus(`Starting ${mode} call...`);
+    try {
+      const call = await createCallSession({ roomId: selectedThreadId, mode });
+      setActiveCall(call);
+      setCallStatus(`${mode === "video" ? "Video" : "Voice"} call room #${call.id} is ready.`);
+      setNotifications(await fetchNotifications());
+    } catch (err) {
+      setCallStatus(err instanceof Error ? err.message : "Could not start call.");
+    }
+  }
+
+  async function startLiveMeeting(room: LiveRoom, mode: "voice" | "video") {
+    const roomId = selectedThreadId || chatContacts[0]?.id || "";
+    if (!roomId) {
+      setCallStatus("Create a chat room before starting a live meeting.");
+      setActiveTab("messages");
+      return;
+    }
+
+    setCallStatus(`Opening ${mode} room for ${room.title}...`);
+    try {
+      const call = await createCallSession({ roomId, mode });
+      setActiveCall(call);
+      setCallStatus(`${mode === "video" ? "Video meeting" : "Voice room"} #${call.id} is ready for ${room.host}.`);
+      setNotifications(await fetchNotifications());
+    } catch (err) {
+      setCallStatus(err instanceof Error ? err.message : "Could not start the live meeting.");
+    }
   }
 
   function changeTab(tab: HomeTab) {
@@ -583,12 +691,50 @@ function HomeApp({
 
   return (
     <main className="social-shell">
+      {selectedProfilePost || editingPost ? null : (
+        <DesktopSidebar
+          activeTab={activeTab}
+          health={health}
+          notificationCount={notifications.filter((notification) => !notification.readAt).length}
+          onTabChange={changeTab}
+          user={profile?.user ?? user}
+        />
+      )}
       <section className="phone-frame">
-        {selectedProfilePost ? (
-          <PublicProfileScreen post={selectedProfilePost} onBack={() => setSelectedProfilePost(null)} />
+        {editingPost ? (
+          <PostEditPanel
+            post={editingPost}
+            onBack={() => setEditingPost(null)}
+            onSave={updateStudioPost}
+            onShareHome={() => {
+              setEditingPost(null);
+              setActiveTab("home");
+            }}
+          />
+        ) : selectedProfilePost ? (
+          <PublicProfileScreen
+            post={selectedProfilePost}
+            onBack={() => setSelectedProfilePost(null)}
+            chatUsers={chatUsers}
+            onOpenPost={setSelectedProfilePost}
+            posts={displayPosts}
+          />
         ) : activeTab === "home" ? (
           <>
-            <StoryHeader liveRooms={liveRooms} onOpenStream={openStream} user={user} />
+            <StoryHeader
+              liveRooms={liveRooms}
+              notificationCount={notifications.filter((notification) => !notification.readAt).length}
+              notifications={notifications}
+              notificationOpen={notificationOpen}
+              onOpenNotifications={() => void openNotifications()}
+              onCreateStory={() => changeTab("studio")}
+              onFeedModeChange={setFeedMode}
+              onOpenMessages={() => changeTab("messages")}
+              onOpenProfile={() => changeTab("profiles")}
+              onOpenStream={openStream}
+              feedMode={feedMode}
+              user={user}
+            />
             {feedError ? <p className="feed-error">{feedError}</p> : null}
             <HomeFeed
               comments={comments}
@@ -598,7 +744,7 @@ function HomeApp({
               onLoadComments={loadPostComments}
               onOpenProfile={setSelectedProfilePost}
               onToggleFollow={toggleFollow}
-              posts={displayPosts}
+              posts={homePosts}
             />
           </>
         ) : null}
@@ -613,11 +759,14 @@ function HomeApp({
             onLoadComments={loadLiveComments}
             onOpenStream={openStream}
             onRate={updateLiveRating}
+            onStartLiveCall={startLiveMeeting}
             onToggleFollow={toggleFollow}
             ratingsByLiveId={ratingsByLiveId}
             selectedLive={selectedLive}
             followersFor={followersFor}
             isFollowing={isFollowing}
+            activeCall={activeCall}
+            callStatus={callStatus}
           />
         ) : null}
 
@@ -632,21 +781,28 @@ function HomeApp({
             onOpenProfile={() => changeTab("profiles")}
             onOpenThread={openThread}
             onSendMessage={sendMessage}
+            onStartCall={startThreadCall}
             onToggleFollow={toggleFollow}
             selectedThreadId={selectedThreadId}
+            activeCall={activeCall}
+            callStatus={callStatus}
             isFollowing={isFollowing}
           />
         ) : null}
 
         {activeTab === "studio" ? (
-          <StudioPanel onCreatePost={publishStudioPost} posts={displayPosts} serviceLabel={serviceLabel} />
+          <StudioPanel onCreatePost={publishStudioPost} onUploadMedia={uploadStudioFile} posts={displayPosts} serviceLabel={serviceLabel} />
         ) : null}
 
         {activeTab === "profiles" && profileView === "profile" ? (
           <ProfilePanel
             health={health}
+            chatUsers={chatUsers}
+            onEditPost={setEditingPost}
             onLogout={onLogout}
             onOpenSettings={() => setProfileView("settings")}
+            onOpenPost={setSelectedProfilePost}
+            onStartCreating={() => changeTab("studio")}
             posts={displayPosts}
             profile={profile}
             user={profile?.user ?? user}
@@ -660,6 +816,7 @@ function HomeApp({
             onBack={() => setProfileView("profile")}
             onLogout={onLogout}
             onSaveProfile={saveProfile}
+            onUploadMedia={uploadStudioFile}
             profile={profile}
             theme={theme}
             themes={themeOptions}
@@ -668,7 +825,7 @@ function HomeApp({
           />
         ) : null}
 
-        {selectedProfilePost ? null : <BottomNav activeTab={activeTab} onTabChange={changeTab} />}
+        {selectedProfilePost || editingPost ? null : <BottomNav activeTab={activeTab} onTabChange={changeTab} />}
       </section>
 
       {notice ? (
@@ -683,7 +840,33 @@ function HomeApp({
   );
 }
 
-function StoryHeader({ liveRooms, onOpenStream, user }: { liveRooms: LiveRoom[]; onOpenStream: (room: LiveRoom) => void; user: AuthUser }) {
+function StoryHeader({
+  feedMode,
+  liveRooms,
+  notificationCount,
+  notificationOpen,
+  notifications,
+  onCreateStory,
+  onFeedModeChange,
+  onOpenMessages,
+  onOpenNotifications,
+  onOpenProfile,
+  onOpenStream,
+  user,
+}: {
+  feedMode: FeedMode;
+  liveRooms: LiveRoom[];
+  notificationCount: number;
+  notificationOpen: boolean;
+  notifications: Notification[];
+  onCreateStory: () => void;
+  onFeedModeChange: (mode: FeedMode) => void;
+  onOpenMessages: () => void;
+  onOpenNotifications: () => void;
+  onOpenProfile: () => void;
+  onOpenStream: (room: LiveRoom) => void;
+  user: AuthUser;
+}) {
   return (
     <header className="home-highlight" aria-label="Home highlight">
       <div className="highlight-topbar">
@@ -692,14 +875,27 @@ function StoryHeader({ liveRooms, onOpenStream, user }: { liveRooms: LiveRoom[];
           <strong>Creators</strong>
         </a>
         <div className="highlight-actions">
-          <button type="button" aria-label="Search"><span className="highlight-icon search" /></button>
-          <button type="button" aria-label="Notifications"><span className="highlight-icon bell" /><i>2</i></button>
-          <button type="button" aria-label="Menu"><span className="highlight-icon menu" /></button>
+          <button type="button" aria-label="Search" onClick={onOpenMessages}><span className="highlight-icon search" /></button>
+          <button type="button" aria-label="Notifications" onClick={onOpenNotifications}>
+            <span className="highlight-icon bell" />
+            {notificationCount ? <i>{notificationCount}</i> : null}
+          </button>
+          <button type="button" aria-label="Menu" onClick={onOpenProfile}><span className="highlight-icon menu" /></button>
         </div>
       </div>
+      {notificationOpen ? (
+        <section className="notification-drawer" aria-label="Notifications">
+          {notifications.length ? notifications.slice(0, 5).map((notification) => (
+            <article key={notification.id}>
+              <strong>{notification.title}</strong>
+              <span>{notification.body}</span>
+            </article>
+          )) : <p>No notifications yet.</p>}
+        </section>
+      ) : null}
 
       <div className="story-header" aria-label="Live streaming channels and users">
-        <button className="send-bubble" type="button" aria-label="Create">
+        <button className="send-bubble" type="button" aria-label="Create" onClick={onCreateStory}>
           <span>+</span>
           <small>Add story</small>
         </button>
@@ -712,7 +908,7 @@ function StoryHeader({ liveRooms, onOpenStream, user }: { liveRooms: LiveRoom[];
             <small>{firstName(room.host)}</small>
           </button>
         ))}
-        <button className="story-avatar" type="button">
+        <button className="story-avatar" type="button" onClick={onOpenProfile}>
           <span className="story-photo">
             <img alt={`${user.name} profile`} src={profileImageFor(user.name)} />
           </span>
@@ -721,9 +917,11 @@ function StoryHeader({ liveRooms, onOpenStream, user }: { liveRooms: LiveRoom[];
       </div>
 
       <nav className="feed-filter" aria-label="Feed visibility filters">
-        <button type="button">Local</button>
-        <button type="button">Global</button>
-        <button className="active" type="button">Trend</button>
+        {(["Local", "Global", "Trend"] as const).map((mode) => (
+          <button className={feedMode === mode ? "active" : ""} key={mode} type="button" onClick={() => onFeedModeChange(mode)}>
+            {mode}
+          </button>
+        ))}
       </nav>
     </header>
   );
@@ -876,6 +1074,7 @@ function FeedCard({
   const [shareOpen, setShareOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const imageFilter = webFilterFor(post.filterName);
+  const primaryMedia = post.gallery[0] ?? post.mediaUrl;
 
   function promotePost() {
     setPromoted((current) => {
@@ -890,7 +1089,7 @@ function FeedCard({
       await createPost({
         body: `Sharing ${post.author.name}'s post: ${post.body}`,
         mood: post.mood,
-        mediaUrl: post.mediaUrl || post.gallery[0],
+        mediaUrl: post.mediaUrl || primaryMedia,
         filterName: post.filterName,
         overlayText: post.overlayText,
         sticker: post.sticker,
@@ -928,7 +1127,34 @@ function FeedCard({
   return (
     <article className="feed-card">
       <div className="photo-grid">
-        <img className="photo-grid-main" alt="" src={post.gallery[0]} style={{ filter: imageFilter }} />
+        {!primaryMedia ? (
+          <div className="photo-grid-main media-placeholder">Media will appear here after upload.</div>
+        ) : post.mediaType === "video" ? (
+          <video
+            autoPlay
+            className="photo-grid-main"
+            loop
+            muted
+            playsInline
+            src={primaryMedia}
+            style={{
+              filter: imageFilter,
+              objectPosition: `${post.cropX || 50}% ${post.cropY || 50}%`,
+              transform: `scale(${post.cropZoom || 1}) rotate(${post.rotation || 0}deg)`,
+            }}
+          />
+        ) : (
+          <img
+            className="photo-grid-main"
+            alt=""
+            src={primaryMedia}
+            style={{
+              filter: imageFilter,
+              objectPosition: `${post.cropX || 50}% ${post.cropY || 50}%`,
+              transform: `scale(${post.cropZoom || 1}) rotate(${post.rotation || 0}deg)`,
+            }}
+          />
+        )}
         {post.gallery.slice(1, 5).map((image, index) => (
           <div className="photo-tile" key={image}>
             <img alt="" src={image} />
@@ -1029,6 +1255,8 @@ function FeedCard({
 }
 
 function StreamScreen({
+  activeCall,
+  callStatus,
   comments,
   followersFor,
   isFollowing,
@@ -1040,9 +1268,12 @@ function StreamScreen({
   onLoadComments,
   onOpenStream,
   onRate,
+  onStartLiveCall,
   onToggleFollow,
   ratingsByLiveId,
 }: {
+  activeCall: CallSession | null;
+  callStatus: string;
   comments: Comment[];
   followersFor: (name: string) => number;
   isFollowing: (name: string) => boolean;
@@ -1054,20 +1285,25 @@ function StreamScreen({
   onLoadComments: (liveId: number) => Promise<void>;
   onOpenStream: (room: LiveRoom) => void;
   onRate: (liveRoomId: number, score: number) => Promise<void>;
+  onStartLiveCall: (room: LiveRoom, mode: "voice" | "video") => Promise<void>;
   onToggleFollow: (name: string) => void;
   ratingsByLiveId: Map<number, LiveRating>;
 }) {
   const live = selectedLive;
   const [fullPlayer, setFullPlayer] = useState(false);
+  const [roomActionStatus, setRoomActionStatus] = useState("");
   const spotlightRooms = liveIndex?.live ?? liveRooms;
   const popularHosts = (liveIndex?.following ?? liveRooms).slice(0, 4);
+  const followingRooms = liveIndex?.following ?? [];
+  const globalRooms = spotlightRooms.filter(r => !followingRooms.find(f => f.id === r.id));
+
   const categories = [
-    { label: "All", active: true },
-    { label: "Esport" },
-    { label: "Channels" },
+    { label: "Discovery", active: true },
+    { label: "Following" },
+    { label: "Trending" },
     { label: "Categories" },
-    { label: "Top" },
   ];
+  const heroRoom = spotlightRooms[0] ?? liveRooms[0] ?? null;
 
   useEffect(() => {
     if (live) {
@@ -1083,14 +1319,14 @@ function StreamScreen({
 
   if (!live) {
     return (
-      <section className="stream-screen" style={{ backgroundImage: `url("${streamImageFor((spotlightRooms[0] ?? liveRooms[0])?.id ?? 1)}")` }}>
+      <section className="stream-screen" style={{ backgroundImage: `url("${liveCoverFor(heroRoom)}")` }}>
         <div className="relative z-[2] mx-auto flex min-h-screen w-full max-w-6xl items-center px-3 pb-28 pt-4 md:px-5">
           <Fade in timeout={320}>
             <div className="w-full rounded-[34px] border border-white/10 bg-[color:rgba(8,12,20,0.78)] p-4 text-white shadow-2xl backdrop-blur-xl md:p-6">
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),320px]">
                 <div className="overflow-hidden rounded-[30px] border border-white/10 bg-black/20">
                   <div className="relative">
-                    <img alt="" className="aspect-[1.08/1] w-full object-cover" src={streamImageFor((spotlightRooms[0] ?? liveRooms[0])?.id ?? 1)} />
+                    <img alt="" className="aspect-[1.08/1] w-full object-cover" src={liveCoverFor(heroRoom)} />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
                     <div className="absolute left-4 top-4 flex items-center gap-2">
                       <IconButton className="!bg-black/35 !text-white" onClick={onClose}>
@@ -1105,6 +1341,16 @@ function StreamScreen({
                       <p className="mt-4 max-w-xl text-sm leading-6 text-white/70 md:text-base">
                         Discover what is live now, scan popular creators, then tap any stream card to move into the watch room with live chat and reactions.
                       </p>
+                      <div className="live-room-shortcuts" aria-label="Live room shortcuts">
+                        <button type="button" onClick={() => spotlightRooms[0] ? onOpenStream(spotlightRooms[0]) : undefined}>
+                          <VideocamRounded fontSize="small" />
+                          Create stream
+                        </button>
+                        <button type="button" onClick={() => spotlightRooms[0] ? void onStartLiveCall(spotlightRooms[0], "video") : undefined}>
+                          <GroupsRounded fontSize="small" />
+                          Group call
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1129,19 +1375,19 @@ function StreamScreen({
 
                     <div className="mt-6">
                       <div className="mb-3 flex items-center justify-between">
-                        <h2 className="text-lg font-black">Live Now</h2>
+                        <h2 className="text-lg font-black">Following</h2>
                         <IconButton className="!text-white/70">
                           <MoreHorizRounded />
                         </IconButton>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        {spotlightRooms.slice(0, 4).map((room) => (
+                        {(followingRooms.length > 0 ? followingRooms : spotlightRooms).slice(0, 4).map((room) => (
                           <button className="group overflow-hidden rounded-[22px] border border-white/8 text-left transition hover:border-[color:var(--accent)]" key={room.id} type="button" onClick={() => onOpenStream(room)}>
                             <div className="relative">
-                              <img alt="" className="aspect-[0.78/1] w-full object-cover transition duration-500 group-hover:scale-105" src={streamImageFor(room.id)} />
+                              <img alt="" className="aspect-[0.78/1] w-full object-cover transition duration-500 group-hover:scale-105" src={liveCoverFor(room)} />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
                               <Chip
-                                label={`${compactNumber(55000 + room.id * 11)} viewers`}
+                                label={`${compactNumber(room.viewers)} viewers`}
                                 size="small"
                                 sx={{
                                   position: "absolute",
@@ -1165,13 +1411,13 @@ function StreamScreen({
 
                   <div className="mt-6">
                     <div className="mb-3 flex items-center justify-between">
-                      <h2 className="text-lg font-black">Popular Streamers</h2>
+                      <h2 className="text-lg font-black">Global Discovery</h2>
                       <IconButton className="!text-white/70">
                         <MoreHorizRounded />
                       </IconButton>
                     </div>
                     <div className="space-y-3">
-                      {popularHosts.map((room) => (
+                      {globalRooms.slice(0, 5).map((room) => (
                         <button className="flex w-full items-center gap-3 rounded-[22px] border border-white/8 bg-white/5 p-3 text-left transition hover:bg-white/10" key={room.id} type="button" onClick={() => onOpenStream(room)}>
                           <Badge color="success" overlap="circular" variant="dot">
                             <Avatar src={profileImageFor(room.host)} />
@@ -1197,163 +1443,175 @@ function StreamScreen({
   const rating = ratingsByLiveId.get(live.id);
   const liveComments = comments.filter((comment) => comment.targetType === "live" && comment.targetId === live.id);
   const following = isFollowing(live.host);
+  const meetingPeople = [live.host, ...spotlightRooms.filter((room) => room.id !== live.id).map((room) => room.host)].slice(0, 5);
 
   return (
-    <section className="stream-screen" style={{ backgroundImage: `url("${streamImageFor(live.id)}")` }}>
-      <div className="relative z-[2] mx-auto flex min-h-screen max-w-6xl items-center px-3 pb-28 pt-4 md:px-4">
-        <Fade in timeout={320}>
-          <div className="w-full rounded-[34px] border border-white/10 bg-[color:rgba(8,12,20,0.78)] p-3 text-white shadow-2xl backdrop-blur-xl md:p-4">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr),340px]">
-              <div className="overflow-hidden rounded-[30px] border border-white/10 bg-black/20">
-                <div className="relative">
-                  <button className="block w-full text-left" type="button" onClick={() => setFullPlayer(true)}>
-                    <img alt="" className="aspect-[1.3/1] w-full object-cover object-center transition duration-500 hover:scale-[1.02]" src={streamImageFor(live.id)} />
-                  </button>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/18 to-black/10" />
-                  <div className="absolute left-3 top-3 flex items-center gap-2">
-                    <IconButton className="!bg-black/35 !text-white" onClick={() => onClose()}>
-                      <ArrowBackRounded />
-                    </IconButton>
-                    <Chip icon={<VideocamRounded />} label="Live" sx={{ color: "#fff", background: "rgba(219,46,67,0.88)", fontWeight: 800 }} />
-                    <Chip label={`${compactNumber(55000 + live.id * 11)} viewers`} sx={{ color: "var(--text-dark)", background: "#68f2bf", fontWeight: 800 }} />
-                  </div>
-                  <div className="absolute inset-x-0 bottom-0 p-4 md:p-5">
-                    <h1 className="max-w-[16ch] text-3xl font-black leading-tight text-white md:text-4xl">{live.title}</h1>
-                    <p className="mt-2 text-sm text-white/70">{live.status === "live" ? "Counter-Strike • Global Offensive" : "Scheduled creator event"}</p>
-                  </div>
-                </div>
+    <section className="stream-screen stream-room-page" style={{ backgroundImage: `url("${liveCoverFor(live)}")` }}>
+      <Fade in timeout={320}>
+        <div className="live-room-dashboard">
+          <aside className="live-room-rail" aria-label="Live room actions">
+            <button type="button" onClick={() => onClose()} aria-label="Back to live lobby">
+              <ArrowBackRounded />
+            </button>
+            <button className="active" type="button" onClick={() => setFullPlayer(true)} aria-label="Open large player">
+              <PlayCircleRounded />
+            </button>
+            <button type="button" onClick={() => void onStartLiveCall(live, "video")} aria-label="Start video meeting">
+              <VideocamRounded />
+            </button>
+            <button type="button" onClick={() => void onStartLiveCall(live, "voice")} aria-label="Start voice room">
+              <PhoneRounded />
+            </button>
+            <button type="button" onClick={() => onToggleFollow(live.host)} aria-label="Follow host">
+              <FavoriteRounded />
+            </button>
+          </aside>
 
-                <div className="p-4 md:p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-white/8 bg-white/5 p-3">
-                    <div className="flex items-center gap-3">
-                      <Badge color="success" overlap="circular" variant="dot">
-                        <Avatar src={profileImageFor(live.host)} sx={{ width: 48, height: 48 }} />
-                      </Badge>
-                      <div>
-                        <strong className="block text-white">{live.host}</strong>
-                        <small className="text-white/60">{compactNumber(followersFor(live.host))} followers</small>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <FollowPill following={following} onClick={() => onToggleFollow(live.host)} />
-                      <IconButton className="!bg-white/8 !text-white">
-                        <FavoriteRounded />
-                      </IconButton>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {[1, 2, 3, 4, 5].map((score) => (
-                      <Chip
-                        clickable
-                        key={score}
-                        label={`${score}`}
-                        onClick={() => void onRate(live.id, score)}
-                        sx={{
-                          width: 42,
-                          color: "#fff",
-                          fontWeight: 800,
-                          borderRadius: "999px",
-                          background: rating?.userScore === score ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "rgba(255,255,255,0.08)",
-                          border: "1px solid rgba(255,255,255,0.08)",
-                        }}
-                      />
-                    ))}
-                  </div>
-
-                  <div className="mt-5">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h2 className="text-sm font-black uppercase tracking-[0.18em] text-white/60">More live now</h2>
-                      <IconButton className="!text-white/70">
-                        <MoreHorizRounded />
-                      </IconButton>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                      {spotlightRooms.filter((room) => room.id !== live.id).slice(0, 3).map((room) => (
-                        <button className="overflow-hidden rounded-[22px] border border-white/8 text-left transition hover:border-[color:var(--accent)]" key={room.id} type="button" onClick={() => onOpenStream(room)}>
-                          <div className="relative">
-                            <img alt="" className="aspect-[0.95/1] w-full object-cover" src={streamImageFor(room.id)} />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                            <div className="absolute inset-x-0 bottom-0 p-3">
-                              <p className="m-0 truncate text-sm font-black text-white">{room.title}</p>
-                              <p className="m-0 mt-1 truncate text-[11px] text-white/60">{room.host}</p>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+          <main className="live-room-main">
+            <header className="live-room-header">
+              <div>
+                <span>{live.status}</span>
+                <h1>{live.title}</h1>
+                <p>{live.host} hosts {live.topic} - {compactNumber(live.viewers)} watching</p>
               </div>
+              <div className="live-room-header-actions">
+                <FollowPill following={following} onClick={() => onToggleFollow(live.host)} />
+                <button type="button" onClick={() => void onStartLiveCall(live, "video")}>
+                  <GroupsRounded fontSize="small" />
+                  Add guest
+                </button>
+              </div>
+            </header>
 
-              <aside className="rounded-[30px] border border-white/10 bg-[color:rgba(5,8,16,0.48)] p-4 text-white">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-black">Chat</h2>
-                  <IconButton className="!text-white/70">
-                    <AutoAwesomeRounded />
-                  </IconButton>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {liveComments.slice(-6).map((comment) => (
-                    <div className="rounded-[20px] border border-white/8 bg-white/5 p-3" key={comment.id}>
-                      <p className="m-0 text-sm font-black text-[color:var(--accent-3)]">{comment.author.name}</p>
-                      <EmojiText className="mt-1 block text-sm text-white/80" text={comment.body} />
-                    </div>
-                  ))}
-                  {!liveComments.length ? <p className="text-sm text-white/55">No chat yet. Be the first one in.</p> : null}
-                </div>
-                <EmojiComposer
-                  placeholder="Say something in chat"
-                  onSubmit={(value) => onAddComment(live.id, value)}
-                />
-
-                <div className="mt-6 space-y-3">
-                  <div className="rounded-[22px] border border-white/8 bg-white/5 p-3">
-                    <p className="m-0 text-xs font-black uppercase tracking-[0.18em] text-white/50">Average rate</p>
-                    <strong className="mt-2 block text-2xl">{rating ? rating.average.toFixed(1) : "New"}</strong>
-                    <small className="text-white/60">{rating?.count ?? 0} total votes</small>
-                  </div>
-                  <div className="rounded-[22px] border border-white/8 bg-white/5 p-3">
-                    <p className="m-0 text-xs font-black uppercase tracking-[0.18em] text-white/50">Event schedule</p>
-                    <Stack spacing={1.25} sx={{ mt: 1.5 }}>
-                      {(liveIndex?.scheduled ?? []).slice(0, 3).map((room) => (
-                        <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2" key={room.id}>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-sm font-semibold">{room.title}</span>
-                            <ScheduleRounded sx={{ fontSize: 16, color: "var(--accent)" }} />
-                          </div>
-                          <small className="text-white/60">{timeAgo(room.startsAt)}</small>
-                        </div>
-                      ))}
-                    </Stack>
-                  </div>
-                </div>
-              </aside>
+            <div className="live-participant-strip" aria-label="Participants">
+              {[live, ...spotlightRooms.filter((room) => room.id !== live.id)].slice(0, 5).map((room) => (
+                <button className={room.id === live.id ? "active" : ""} key={room.id} type="button" onClick={() => onOpenStream(room)}>
+                  <img alt="" src={liveCoverFor(room)} />
+                  <span>{firstName(room.host)}</span>
+                  <i />
+                </button>
+              ))}
             </div>
-          </div>
-        </Fade>
-      </div>
-      <div className="heart-float" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
+
+            <section className="live-stage" aria-label="Live video stage">
+              <button className="live-stage-media" type="button" onClick={() => setFullPlayer(true)}>
+                <img alt="" src={liveCoverFor(live)} />
+              </button>
+              <div className="live-stage-top">
+                <span className="live-badge"><VideocamRounded fontSize="small" /> Live</span>
+                <span>{compactNumber(live.viewers)} viewers</span>
+                <span>{elapsedTime(live.startsAt)}</span>
+              </div>
+              <div className="live-stage-caption">
+                <Avatar src={profileImageFor(live.host)} sx={{ width: 48, height: 48 }} />
+                <span>
+                  <strong>{live.host}</strong>
+                  <small>{compactNumber(followersFor(live.host))} followers</small>
+                </span>
+              </div>
+              <div className="live-stage-controls">
+                <button type="button" onClick={() => void onStartLiveCall(live, "voice")} aria-label="Voice">
+                  <PhoneRounded />
+                </button>
+                <button className="danger" type="button" onClick={() => onClose()} aria-label="Leave live room">
+                  <PhoneRounded />
+                </button>
+                <button type="button" onClick={() => void onStartLiveCall(live, "video")} aria-label="Video meeting">
+                  <VideocamRounded />
+                </button>
+                <button type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}/?live=${live.id}`).then(() => setRoomActionStatus("Live link copied."))} aria-label="Copy live link">
+                  <NorthEastRounded />
+                </button>
+              </div>
+            </section>
+
+            <div className="live-session-bar">
+              <AvatarGroup max={5} sx={{ "& .MuiAvatar-root": { width: 38, height: 38, borderColor: "#181d24" } }}>
+                {meetingPeople.map((name) => <Avatar alt={name} key={name} src={profileImageFor(name)} />)}
+              </AvatarGroup>
+              <div>
+                <strong>{activeCall ? `${activeCall.mode} room #${activeCall.id}` : "Creator room"}</strong>
+                <span>{roomActionStatus || callStatus || `${live.topic} responses and comments are open.`}</span>
+              </div>
+              <button type="button" onClick={() => void onStartLiveCall(live, "video")}>Start meeting</button>
+            </div>
+          </main>
+
+          <aside className="live-room-side">
+            <section className="live-response-card">
+              <div>
+                <strong>Audience response</strong>
+                <span>{rating ? `${rating.average.toFixed(1)} average` : "New stream"}</span>
+              </div>
+              <div className="live-rating-row">
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <button className={rating?.userScore === score ? "active" : ""} key={score} type="button" onClick={() => void onRate(live.id, score)}>
+                    {score}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="live-pending-card">
+              <div>
+                <Avatar src={profileImageFor(spotlightRooms.find((room) => room.id !== live.id)?.host ?? live.host)} />
+                <span>
+                  <strong>{spotlightRooms.find((room) => room.id !== live.id)?.host ?? live.host}</strong>
+                  <small>{roomActionStatus || "requested to join"}</small>
+                </span>
+              </div>
+              <div>
+                <button type="button" onClick={() => { setRoomActionStatus("Guest admitted to the room."); void onStartLiveCall(live, "video"); }}>Admit</button>
+                <button type="button" onClick={() => setRoomActionStatus("Guest request declined.")}>Deny</button>
+              </div>
+            </section>
+
+            <section className="live-chat-panel">
+              <div className="live-side-heading">
+                <h2>Comments</h2>
+                <AutoAwesomeRounded fontSize="small" />
+              </div>
+              <div className="live-comment-list">
+                {liveComments.slice(-8).map((comment) => (
+                  <article key={comment.id}>
+                    <strong>{comment.author.name}</strong>
+                    <EmojiText text={comment.body} />
+                  </article>
+                ))}
+                {!liveComments.length ? <p>No comments yet. Be the first one in.</p> : null}
+              </div>
+              <EmojiComposer placeholder="Respond to the room" onSubmit={(value) => onAddComment(live.id, value)} />
+            </section>
+
+            <section className="live-schedule-mini">
+              <div className="live-side-heading">
+                <h2>Up next</h2>
+                <ScheduleRounded fontSize="small" />
+              </div>
+              {(liveIndex?.scheduled ?? []).slice(0, 3).map((room) => (
+                <button key={room.id} type="button" onClick={() => onOpenStream(room)}>
+                  <span>{room.title}</span>
+                  <small>{timeAgo(room.startsAt)}</small>
+                </button>
+              ))}
+            </section>
+          </aside>
+        </div>
+      </Fade>
       {fullPlayer ? (
         <div className="fixed inset-0 z-[70] grid place-items-center bg-black/80 p-4 backdrop-blur-xl">
           <div className="relative w-full max-w-sm overflow-hidden rounded-[40px] border border-white/10 bg-black shadow-2xl">
             <button className="absolute left-4 top-4 z-[2] grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white" type="button" onClick={() => setFullPlayer(false)}>
               <ArrowBackRounded />
             </button>
-            <img alt="" className="aspect-[0.57/1] w-full object-cover" src={streamImageFor(live.id)} />
+            <img alt="" className="aspect-[0.57/1] w-full object-cover" src={liveCoverFor(live)} />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-5 text-white">
               <p className="m-0 text-xs font-black uppercase tracking-[0.2em] text-[color:var(--accent-3)]">Now Watching</p>
               <h2 className="mt-2 text-3xl font-black leading-tight">{live.title}</h2>
               <p className="mt-2 text-sm text-white/70">{live.host}</p>
               <div className="mt-4 flex items-center gap-2">
-                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold">{compactNumber(55000 + live.id * 11)} viewers</span>
+                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold">{compactNumber(live.viewers)} viewers</span>
                 <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold">{rating ? `${rating.average.toFixed(1)} rating` : "New stream"}</span>
               </div>
             </div>
@@ -1364,21 +1622,9 @@ function StreamScreen({
   );
 }
 
-function StreamList({ title, rooms, onOpenStream }: { title: string; rooms: LiveRoom[]; onOpenStream: (room: LiveRoom) => void }) {
-  return (
-    <div>
-      <h2>{title}</h2>
-      {rooms.map((room) => (
-        <button key={room.id} type="button" onClick={() => onOpenStream(room)}>
-          <img alt="" src={profileImageFor(room.host)} />
-          <span>{room.title}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function SearchMessages({
+  activeCall,
+  callStatus,
   chatUsers,
   contacts,
   isFollowing,
@@ -1389,9 +1635,12 @@ function SearchMessages({
   onOpenProfile,
   onOpenThread,
   onSendMessage,
+  onStartCall,
   onToggleFollow,
   selectedThreadId,
 }: {
+  activeCall: CallSession | null;
+  callStatus: string;
   chatUsers: ChatUser[];
   contacts: ChatContact[];
   isFollowing: (name: string) => boolean;
@@ -1402,6 +1651,7 @@ function SearchMessages({
   onOpenProfile: () => void;
   onOpenThread: (contactId: string) => Promise<void>;
   onSendMessage: (body: string) => Promise<void>;
+  onStartCall: (mode: "voice" | "video") => Promise<void>;
   onToggleFollow: (name: string) => void;
   selectedThreadId: string;
 }) {
@@ -1541,7 +1791,10 @@ function SearchMessages({
                     className={`min-w-[72px] rounded-[18px] border px-2 py-2 text-center text-xs font-bold ${selectedUserIds.includes(user.id) ? "border-[#49d17d] bg-[#49d17d]/20 text-white" : "border-[color:var(--line-soft)] bg-[color:var(--surface-3)] text-[color:var(--text-3)]"}`}
                     key={user.id}
                     type="button"
-                    onClick={() => toggleSelectedUser(user.id)}
+                    onClick={() => {
+                      toggleSelectedUser(user.id);
+                    }}
+                    onDoubleClick={() => void onCreateDirectChat(user.id)}
                   >
                     <Avatar src={profileImageFor(user.name)} sx={{ width: 34, height: 34, mx: "auto", mb: 0.5 }} />
                     <span className="block truncate">{firstName(user.name)}</span>
@@ -1572,8 +1825,8 @@ function SearchMessages({
                           <strong className="block truncate text-sm">{contact.name}</strong>
                           <small className="shrink-0 text-[11px] text-[color:var(--text-3)]">25m</small>
                         </span>
-                          <small className="block truncate text-xs text-[color:var(--text-3)]">{contact.type === "group" ? `${contact.participantCount} members` : contact.subtitle}</small>
-                          <small className="block truncate text-xs text-[color:var(--text-3)]">{contact.lastBody || "No messages yet"}</small>
+                        <small className="block truncate text-xs text-[color:var(--text-3)]">{contact.type === "group" ? `${contact.participantCount} members` : contact.subtitle}</small>
+                        <small className="block truncate text-xs text-[color:var(--text-3)]">{contact.lastBody || "No messages yet"}</small>
                       </span>
                     </button>
                     <div className="flex flex-col items-end gap-2">
@@ -1600,10 +1853,10 @@ function SearchMessages({
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <IconButton className="!text-white/75">
+                <IconButton className="!text-white/75" onClick={() => void onStartCall("voice")}>
                   <PhoneRounded />
                 </IconButton>
-                <IconButton className="!text-white/75">
+                <IconButton className="!text-white/75" onClick={() => void onStartCall("video")}>
                   <VideocamOutlined />
                 </IconButton>
                 <IconButton className="!text-white/75">
@@ -1611,6 +1864,12 @@ function SearchMessages({
                 </IconButton>
               </div>
             </div>
+            {callStatus || activeCall ? (
+              <div className="call-status-strip">
+                <strong>{activeCall ? `${activeCall.mode} call #${activeCall.id}` : "Call"}</strong>
+                <span>{callStatus || activeCall?.status}</span>
+              </div>
+            ) : null}
 
             {activeContact?.type === "group" ? (
               <Paper elevation={0} sx={{ mt: 3, p: 1.5, borderRadius: "22px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -1640,7 +1899,7 @@ function SearchMessages({
             <div className="mt-4 rounded-[28px] border border-white/6 bg-black/10 p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white/40">
                 <CommentRounded sx={{ fontSize: 18 }} />
-                WhatsApp-style thread flow
+                Thread
               </div>
               <div className="chat-bubbles min-h-[320px]">
                 {messages.map((message) => (
@@ -1674,21 +1933,28 @@ function SearchMessages({
 
 function StudioPanel({
   onCreatePost,
+  onUploadMedia,
   posts,
   serviceLabel,
 }: {
   onCreatePost: (input: PostInput) => Promise<FeedPost>;
+  onUploadMedia: (file: File) => Promise<{ url: string; mediaType: "image" | "video" | string }>;
   posts: DisplayPost[];
   serviceLabel: string;
 }) {
   const [draft, setDraft] = useState<StudioDraft>(() => createStudioDraft());
+  const [activeTool, setActiveTool] = useState<StudioTool>("media");
+  const [creationMode, setCreationMode] = useState<"post" | "collab" | "live">("post");
   const [publishing, setPublishing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [publishStatus, setPublishStatus] = useState("");
   const topPosts = posts.slice(0, 3);
   const topBoost = topPosts[0]?.promotionScore ?? 0;
   const totalReach = topPosts.reduce((total, post) => total + post.likes + post.comments, 0);
   const selectedFilter = studioFilters.find((filter) => filter.name === draft.filterName) ?? studioFilters[0];
   const selectedTone = studioTones.find((tone) => tone.id === draft.backgroundTone) ?? studioTones[0];
+  const activeToolLabel = studioTools.find((tool) => tool.id === activeTool)?.label ?? "Media";
+  const libraryItems = Array.from(new Set(posts.flatMap((post) => post.gallery))).filter(Boolean);
 
   function updateDraft<K extends keyof StudioDraft>(key: K, value: StudioDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -1699,20 +1965,30 @@ function StudioPanel({
     if (!draft.body.trim() || publishing) {
       return;
     }
+    if (creationMode === "live") {
+      setActiveTool("publish");
+      setPublishStatus("Live setup is ready. Open the Live tab to start the stream room.");
+      return;
+    }
 
     setPublishing(true);
-    setPublishStatus("Publishing...");
+    setPublishStatus(creationMode === "collab" ? "Publishing mutual post..." : "Publishing...");
     try {
       const post = await onCreatePost({
         body: draft.body,
-        mood: draft.mood,
+        mood: creationMode === "collab" ? `${draft.mood} collab` : draft.mood,
         mediaUrl: draft.mediaUrl,
+        mediaType: draft.mediaType,
         filterName: draft.filterName,
         overlayText: draft.overlayText,
         sticker: draft.sticker,
         textColor: draft.textColor,
         backgroundTone: draft.backgroundTone,
         aspectRatio: draft.aspectRatio,
+        cropZoom: draft.cropZoom,
+        cropX: draft.cropX,
+        cropY: draft.cropY,
+        rotation: draft.rotation,
       });
       setDraft(createStudioDraft());
       setPublishStatus(`Published ${post.mood.toLowerCase()} post.`);
@@ -1723,168 +1999,315 @@ function StudioPanel({
     }
   }
 
+  async function uploadFromDevice(file: File | null) {
+    if (!file) {
+      return;
+    }
+    setUploading(true);
+    setPublishStatus("Uploading media...");
+    try {
+      const media = await onUploadMedia(file);
+      updateDraft("mediaUrl", media.url);
+      updateDraft("mediaType", media.mediaType === "video" ? "video" : "image");
+      setActiveTool("adjust");
+      setPublishStatus(`${media.mediaType === "video" ? "Video" : "Image"} added to canvas.`);
+    } catch (err) {
+      setPublishStatus(err instanceof Error ? err.message : "Could not upload media.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <section className="studio-panel">
-      <header className="studio-panel-head">
-        <p>Creator workspace</p>
-        <h1>Studio</h1>
-      </header>
-
-      <form className="studio-composer" onSubmit={submitPost}>
-        <div className="studio-editor-preview" aria-label="Post preview">
-          <div className={`studio-preview-frame tone-${selectedTone.id}`} style={{ aspectRatio: draft.aspectRatio.replace(":", " / ") }}>
-            <img alt="" src={draft.mediaUrl} style={{ filter: selectedFilter.css }} />
-            <div className="studio-preview-scrim" />
-            {draft.sticker ? <span className="studio-preview-sticker">{draft.sticker}</span> : null}
-            {draft.overlayText ? <strong style={{ color: draft.textColor }}>{draft.overlayText}</strong> : null}
-            <p>{draft.body || "Write the caption to preview it here."}</p>
+      <form className="studio-editor-shell" onSubmit={submitPost}>
+        <header className="studio-topbar">
+          <div className="studio-topbar-left">
+            <IconButton aria-label="Back to editor history">
+              <ArrowBackRounded />
+            </IconButton>
+            <span className="studio-project-name">Creator Studio</span>
+            <span className="studio-save-state">{serviceLabel}</span>
           </div>
-        </div>
+          <div className="studio-mode-tabs" aria-label="Creation type">
+            {[
+              ["post", "Post"],
+              ["collab", "Mutual"],
+              ["live", "Live"],
+            ].map(([id, label]) => (
+              <button className={creationMode === id ? "active" : ""} key={id} type="button" onClick={() => {
+                setCreationMode(id as "post" | "collab" | "live");
+                updateDraft("mood", id === "post" ? "Behind the scenes" : id === "collab" ? "Mutual post" : "Live setup");
+              }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="studio-topbar-actions">
+            <IconButton aria-label="Undo last edit" onClick={() => setDraft(createStudioDraft())}>
+              <UndoRounded />
+            </IconButton>
+            <IconButton aria-label="Save draft">
+              <SaveRounded />
+            </IconButton>
+            <Button disabled={!draft.body.trim() || publishing} startIcon={<SendRounded />} type="submit" variant="contained">
+              {publishing ? "Publishing" : creationMode === "live" ? "Prepare" : "Publish"}
+            </Button>
+          </div>
+        </header>
 
-        <div className="studio-editor-controls">
-          <label className="studio-field">
-            <span>Caption</span>
-            <InputBase
-              aria-label="Caption"
-              multiline
-              minRows={3}
-              onChange={(event) => updateDraft("body", event.target.value)}
-              placeholder="Share the moment, offer, or behind-the-scenes note."
-              value={draft.body}
-            />
-          </label>
+        <aside className="studio-tool-rail" aria-label="Studio tools">
+          {studioTools.map((tool) => (
+            <button className={activeTool === tool.id ? "active" : ""} key={tool.id} onClick={() => setActiveTool(tool.id)} title={tool.label} type="button">
+              {tool.icon}
+              <span>{tool.label}</span>
+            </button>
+          ))}
+        </aside>
 
-          <label className="studio-field compact">
-            <span>Mood</span>
-            <InputBase aria-label="Mood" onChange={(event) => updateDraft("mood", event.target.value)} value={draft.mood} />
-          </label>
+        <main className="studio-stage" aria-label="Editor canvas">
+          <div className="studio-stage-label">
+            <span>Slide 1</span>
+            <strong>{draft.aspectRatio}</strong>
+          </div>
+          <div className="studio-canvas-area">
+            <div className={`studio-preview-frame studio-canvas-frame tone-${selectedTone.id}`} style={{ aspectRatio: draft.aspectRatio.replace(":", " / ") }}>
+              {!draft.mediaUrl ? (
+                <div className="studio-empty-media">
+                  <ImageRounded sx={{ animation: 'float-pulse 4s ease-in-out infinite' }} />
+                  <span>Choose media from your device or profile library</span>
+                </div>
+              ) : draft.mediaType === "video" ? (
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  src={draft.mediaUrl}
+                  style={{
+                    filter: selectedFilter.css,
+                    objectPosition: `${draft.cropX}% ${draft.cropY}%`,
+                    transform: `scale(${draft.cropZoom}) rotate(${draft.rotation}deg)`,
+                  }}
+                />
+              ) : (
+                <img
+                  alt=""
+                  src={draft.mediaUrl}
+                  style={{
+                    filter: selectedFilter.css,
+                    objectPosition: `${draft.cropX}% ${draft.cropY}%`,
+                    transform: `scale(${draft.cropZoom}) rotate(${draft.rotation}deg)`,
+                  }}
+                />
+              )}
+              <div className="studio-preview-scrim" />
+              <div className="studio-selection-outline" aria-hidden="true" />
+              {draft.sticker ? <span className="studio-preview-sticker">{draft.sticker}</span> : null}
+              {draft.overlayText ? <strong style={{ color: draft.textColor }}>{draft.overlayText}</strong> : null}
+              <p>{draft.body || "Write the caption to preview it here."}</p>
+            </div>
+          </div>
 
-          <label className="studio-field compact">
-            <span>Overlay text</span>
-            <InputBase aria-label="Overlay text" onChange={(event) => updateDraft("overlayText", event.target.value)} value={draft.overlayText} />
-          </label>
+          <div className="studio-quick-strip" aria-label="Quick media strip">
+            {libraryItems.slice(0, 6).map((image) => (
+              <button
+                className={draft.mediaUrl === image ? "active" : ""}
+                key={image}
+                onClick={() => {
+                  updateDraft("mediaUrl", image);
+                  updateDraft("mediaType", image.match(/\.(mp4|mov|webm)(\?|$)/i) ? "video" : "image");
+                }}
+                type="button"
+              >
+                <img alt="" src={image} />
+              </button>
+            ))}
+          </div>
 
-          <div className="studio-control-group" aria-label="Media">
-            <span>Media</span>
-            <div className="studio-media-strip">
-              {studioMediaOptions.map((image) => (
-                <button
-                  aria-label="Select media"
-                  className={draft.mediaUrl === image ? "selected" : ""}
-                  key={image}
-                  onClick={() => updateDraft("mediaUrl", image)}
-                  type="button"
-                >
-                  <img alt="" src={image} />
+          <div className="studio-timeline" aria-label="Timeline">
+            <div className="studio-timeline-ruler">
+              {studioTimelineTicks.map((tick) => <span key={tick}>{tick}</span>)}
+            </div>
+            <div className="studio-timeline-tracks">
+              <span className="playhead" />
+              <div className="track video-track"><MovieRounded fontSize="small" /> Main media</div>
+              <div className="track text-track"><TextFieldsRounded fontSize="small" /> {draft.overlayText || "Text layer"}</div>
+              <div className="track audio-track">Audio / effects</div>
+            </div>
+          </div>
+        </main>
+
+        <aside className="studio-inspector" aria-label={`${activeToolLabel} inspector`}>
+          <div className="studio-inspector-head">
+            <span>{activeToolLabel}</span>
+            <button type="button" onClick={() => setActiveTool("publish")}>Export</button>
+          </div>
+
+          {activeTool === "media" ? (
+            <div className="studio-inspector-section">
+              <label className="studio-upload-button full">
+                <input
+                  accept="image/*,video/*"
+                  disabled={uploading}
+                  onChange={(event) => void uploadFromDevice(event.currentTarget.files?.[0] ?? null)}
+                  type="file"
+                />
+                <NorthEastRounded fontSize="small" />
+                <span>{uploading ? "Uploading..." : "Upload from device"}</span>
+              </label>
+              <div className="studio-media-grid">
+                {libraryItems.map((image) => (
+                  <button
+                    className={draft.mediaUrl === image ? "selected" : ""}
+                    key={image}
+                    onClick={() => {
+                      updateDraft("mediaUrl", image);
+                      updateDraft("mediaType", image.match(/\.(mp4|mov|webm)(\?|$)/i) ? "video" : "image");
+                    }}
+                    type="button"
+                  >
+                    <img alt="" src={image} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {activeTool === "adjust" ? (
+            <div className="studio-inspector-section">
+              <div className="studio-control-group" aria-label="Crop and transform">
+                <span>Ratio and crop</span>
+                <div className="studio-chip-row">
+                  {studioAspectRatios.map((ratio) => (
+                    <button className={draft.aspectRatio === ratio ? "selected" : ""} key={ratio} onClick={() => updateDraft("aspectRatio", ratio)} type="button">
+                      {ratio}
+                    </button>
+                  ))}
+                </div>
+                <div className="studio-slider-stack">
+                  <label>Zoom <input min="0.8" max="2.4" step="0.02" type="range" value={draft.cropZoom} onChange={(event) => updateDraft("cropZoom", Number(event.target.value))} /></label>
+                  <label>X <input min="0" max="100" type="range" value={draft.cropX} onChange={(event) => updateDraft("cropX", Number(event.target.value))} /></label>
+                  <label>Y <input min="0" max="100" type="range" value={draft.cropY} onChange={(event) => updateDraft("cropY", Number(event.target.value))} /></label>
+                </div>
+              </div>
+              <div className="studio-control-group">
+                <span>Filter</span>
+                <div className="studio-chip-row">
+                  {studioFilters.map((filter) => (
+                    <button className={draft.filterName === filter.name ? "selected" : ""} key={filter.name} onClick={() => updateDraft("filterName", filter.name)} type="button">
+                      {filter.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="studio-control-group">
+                <span>Rotate</span>
+                <div className="studio-chip-row">
+                  {[0, 90, 180, 270].map((rotation) => (
+                    <button className={draft.rotation === rotation ? "selected" : ""} key={rotation} onClick={() => updateDraft("rotation", rotation)} type="button">
+                      {rotation}deg
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTool === "text" ? (
+            <div className="studio-inspector-section">
+              <label className="studio-field">
+                <span>Overlay text</span>
+                <InputBase aria-label="Overlay text" onChange={(event) => updateDraft("overlayText", event.target.value)} value={draft.overlayText} />
+              </label>
+              <label className="studio-field">
+                <span>Caption</span>
+                <InputBase aria-label="Caption" multiline minRows={4} onChange={(event) => updateDraft("body", event.target.value)} placeholder="Share the moment, offer, or behind-the-scenes note." value={draft.body} />
+              </label>
+              <div className="studio-control-group">
+                <span>Text color</span>
+                <div className="studio-color-row">
+                  {studioTextColors.map((color) => (
+                    <button aria-label={`Use ${color} text`} className={draft.textColor === color ? "selected" : ""} key={color} onClick={() => updateDraft("textColor", color)} style={{ backgroundColor: color }} type="button" />
+                  ))}
+                </div>
+              </div>
+              <div className="studio-control-group">
+                <span>Sticker</span>
+                <div className="studio-chip-row">
+                  {studioStickers.map((sticker) => (
+                    <button className={draft.sticker === sticker ? "selected" : ""} key={sticker} onClick={() => updateDraft("sticker", sticker)} type="button">
+                      {sticker}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTool === "layers" ? (
+            <div className="studio-inspector-section">
+              {[
+                ["Media", draft.mediaType],
+                ["Overlay text", draft.overlayText || "Hidden"],
+                ["Sticker", draft.sticker || "Hidden"],
+                ["Caption", draft.body ? "Visible" : "Empty"],
+              ].map(([name, value]) => (
+                <button className="studio-layer-row" key={name} type="button">
+                  <LayersRounded fontSize="small" />
+                  <span><strong>{name}</strong><small>{value}</small></span>
+                  <MoreHorizRounded fontSize="small" />
                 </button>
               ))}
             </div>
-          </div>
+          ) : null}
 
-          <div className="studio-control-grid">
-            <div className="studio-control-group" aria-label="Filters">
-              <span>Filter</span>
-              <div className="studio-chip-row">
-                {studioFilters.map((filter) => (
-                  <button
-                    className={draft.filterName === filter.name ? "selected" : ""}
-                    key={filter.name}
-                    onClick={() => updateDraft("filterName", filter.name)}
-                    type="button"
-                  >
-                    {filter.name}
-                  </button>
-                ))}
+          {activeTool === "timeline" ? (
+            <div className="studio-inspector-section">
+              <div className="studio-control-group">
+                <span>Timeline tools</span>
+                <div className="studio-action-grid">
+                  <button type="button"><ContentCopyRounded fontSize="small" /> Duplicate</button>
+                  <button type="button"><Crop169Rounded fontSize="small" /> Crop</button>
+                  <button type="button"><DeleteRounded fontSize="small" /> Delete</button>
+                  <button type="button"><AutoAwesomeRounded fontSize="small" /> Effects</button>
+                </div>
+              </div>
+              <div className="studio-mini-wave" aria-hidden="true">
+                {Array.from({ length: 30 }, (_, index) => <i key={index} style={{ height: `${18 + (index % 6) * 7}px` }} />)}
               </div>
             </div>
+          ) : null}
 
-            <div className="studio-control-group" aria-label="Sticker">
-              <span>Sticker</span>
-              <div className="studio-chip-row">
-                {studioStickers.map((sticker) => (
-                  <button
-                    className={draft.sticker === sticker ? "selected" : ""}
-                    key={sticker}
-                    onClick={() => updateDraft("sticker", sticker)}
-                    type="button"
-                  >
-                    {sticker}
-                  </button>
-                ))}
+          {activeTool === "publish" ? (
+            <div className="studio-inspector-section">
+              <label className="studio-field compact">
+                <span>Mood</span>
+                <InputBase aria-label="Mood" onChange={(event) => updateDraft("mood", event.target.value)} value={draft.mood} />
+              </label>
+              <div className="studio-control-group">
+                <span>Tone</span>
+                <div className="studio-chip-row">
+                  {studioTones.map((tone) => (
+                    <button className={draft.backgroundTone === tone.id ? "selected" : ""} key={tone.id} onClick={() => updateDraft("backgroundTone", tone.id)} type="button">
+                      {tone.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-
-            <div className="studio-control-group" aria-label="Text color">
-              <span>Text</span>
-              <div className="studio-color-row">
-                {studioTextColors.map((color) => (
-                  <button
-                    aria-label={`Use ${color} text`}
-                    className={draft.textColor === color ? "selected" : ""}
-                    key={color}
-                    onClick={() => updateDraft("textColor", color)}
-                    style={{ backgroundColor: color }}
-                    type="button"
-                  />
-                ))}
+              <div className="studio-composer-actions">
+                <Button disabled={!draft.body.trim() || publishing} startIcon={<SendRounded />} type="submit" variant="contained">
+                  {publishing ? "Publishing" : creationMode === "live" ? "Prepare live" : "Publish post"}
+                </Button>
+                <IconButton aria-label="Reset editor" onClick={() => setDraft(createStudioDraft())}>
+                  <AutoAwesomeRounded />
+                </IconButton>
               </div>
+              {publishStatus ? <p className="studio-publish-status">{publishStatus}</p> : null}
             </div>
-
-            <div className="studio-control-group" aria-label="Tone">
-              <span>Tone</span>
-              <div className="studio-chip-row">
-                {studioTones.map((tone) => (
-                  <button
-                    className={draft.backgroundTone === tone.id ? "selected" : ""}
-                    key={tone.id}
-                    onClick={() => updateDraft("backgroundTone", tone.id)}
-                    type="button"
-                  >
-                    {tone.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="studio-control-group" aria-label="Aspect ratio">
-              <span>Canvas</span>
-              <div className="studio-chip-row">
-                {studioAspectRatios.map((ratio) => (
-                  <button
-                    className={draft.aspectRatio === ratio ? "selected" : ""}
-                    key={ratio}
-                    onClick={() => updateDraft("aspectRatio", ratio)}
-                    type="button"
-                  >
-                    {ratio}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="studio-composer-actions">
-            <Button
-              disabled={!draft.body.trim() || publishing}
-              startIcon={<SendRounded />}
-              type="submit"
-              variant="contained"
-            >
-              {publishing ? "Publishing" : "Publish post"}
-            </Button>
-            <IconButton aria-label="Reset editor" onClick={() => setDraft(createStudioDraft())}>
-              <AutoAwesomeRounded />
-            </IconButton>
-          </div>
-          {publishStatus ? <p className="studio-publish-status">{publishStatus}</p> : null}
-        </div>
+          ) : null}
+        </aside>
       </form>
-
-      <article className="studio-status-card">
-        <span>Live stack</span>
-        <strong>{serviceLabel}</strong>
-        <p>Your creator tools are ready for posts, promotions, comments, and profile updates.</p>
-      </article>
 
       <div className="studio-metrics" aria-label="Studio metrics">
         <span><strong>{posts.length}</strong> Posts</span>
@@ -1899,10 +2322,10 @@ function StudioPanel({
 
       {topPosts.map((post) => (
         <article className="studio-post-row" key={post.id}>
-          <img alt="" src={post.gallery[0]} />
+          {post.gallery[0] ? <img alt="" src={post.gallery[0]} /> : <i aria-hidden="true" className="studio-row-placeholder" />}
           <span>
             <strong>{post.author.name}</strong>
-            <small>{post.promotionScore}% trend score · {post.mood}</small>
+            <small>{post.promotionScore}% trend score - {post.mood}</small>
           </span>
           <button type="button">Promote</button>
         </article>
@@ -1911,36 +2334,207 @@ function StudioPanel({
   );
 }
 
+function PostEditPanel({
+  onBack,
+  onSave,
+  onShareHome,
+  post,
+}: {
+  onBack: () => void;
+  onSave: (postId: number, input: PostInput) => Promise<FeedPost>;
+  onShareHome: () => void;
+  post: DisplayPost;
+}) {
+  const [body, setBody] = useState(post.body);
+  const [mood, setMood] = useState(post.mood);
+  const [overlayText, setOverlayText] = useState(post.overlayText);
+  const [sticker, setSticker] = useState(post.sticker || "NEW");
+  const [textColor, setTextColor] = useState(post.textColor || "#ffffff");
+  const [backgroundTone, setBackgroundTone] = useState(post.backgroundTone || "midnight");
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+  const primaryMedia = post.gallery[0] || post.mediaUrl;
+
+  async function savePost(shareHome: boolean) {
+    if (!body.trim() || saving) {
+      return;
+    }
+    setSaving(true);
+    setStatus(shareHome ? "Saving to Home..." : "Saving changes...");
+    try {
+      await onSave(post.id, {
+        body,
+        mood,
+        mediaUrl: post.mediaUrl || primaryMedia,
+        mediaType: post.mediaType,
+        filterName: post.filterName,
+        overlayText,
+        sticker,
+        textColor,
+        backgroundTone,
+        aspectRatio: post.aspectRatio,
+        cropZoom: post.cropZoom,
+        cropX: post.cropX,
+        cropY: post.cropY,
+        rotation: post.rotation,
+      });
+      setStatus("Post updated.");
+      if (shareHome) {
+        onShareHome();
+      } else {
+        onBack();
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Could not update post.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function shareOutsideApp() {
+    const url = `${window.location.origin}/?post=${post.id}`;
+    const text = `${body}\n${url}`;
+    if (navigator.share) {
+      await navigator.share({ title: "Creators post", text: body, url });
+      return;
+    }
+    await navigator.clipboard.writeText(text);
+    setStatus("Post link copied.");
+  }
+
+  return (
+    <section className="post-edit-page">
+      <header className="post-edit-topbar">
+        <button className="round-icon" type="button" onClick={onBack} aria-label="Back to profile">
+          <ArrowBackRounded fontSize="small" />
+        </button>
+        <strong>Edit profile post</strong>
+        <button className="round-icon" type="button" onClick={() => void shareOutsideApp()} aria-label="Share post">
+          <NorthEastRounded fontSize="small" />
+        </button>
+      </header>
+
+      <div className="post-edit-shell">
+        <div className={`post-edit-preview tone-${backgroundTone}`}>
+          {primaryMedia ? (
+            post.mediaType === "video" ? (
+              <video autoPlay loop muted playsInline src={primaryMedia} />
+            ) : (
+              <img alt="" src={primaryMedia} />
+            )
+          ) : (
+            <div className="post-edit-empty"><ImageRounded />Media preview</div>
+          )}
+          <div className="post-edit-scrim" />
+          {sticker ? <span>{sticker}</span> : null}
+          {overlayText ? <strong style={{ color: textColor }}>{overlayText}</strong> : null}
+          <p>{body || "Write your caption to preview it here."}</p>
+        </div>
+
+        <form className="post-edit-form" onSubmit={(event) => {
+          event.preventDefault();
+          void savePost(false);
+        }}>
+          <label>
+            <span>Caption</span>
+            <textarea value={body} onChange={(event) => setBody(event.target.value)} />
+          </label>
+          <label>
+            <span>Mood</span>
+            <input value={mood} onChange={(event) => setMood(event.target.value)} />
+          </label>
+          <label>
+            <span>Overlay</span>
+            <input value={overlayText} onChange={(event) => setOverlayText(event.target.value)} />
+          </label>
+
+          <div className="post-edit-control">
+            <span>Sticker</span>
+            <div>
+              {["LIVE", "DROP", "NEW", "VIP", "Q&A", ""].map((item) => (
+                <button className={sticker === item ? "active" : ""} key={item || "none"} type="button" onClick={() => setSticker(item)}>
+                  {item || "None"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="post-edit-control">
+            <span>Tone</span>
+            <div>
+              {studioTones.map((tone) => (
+                <button className={backgroundTone === tone.id ? "active" : ""} key={tone.id} type="button" onClick={() => setBackgroundTone(tone.id)}>
+                  {tone.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="post-edit-colors">
+            {studioTextColors.map((color) => (
+              <button aria-label={`Use ${color}`} className={textColor === color ? "active" : ""} key={color} style={{ backgroundColor: color }} type="button" onClick={() => setTextColor(color)} />
+            ))}
+          </div>
+
+          <div className="post-edit-actions">
+            <Button disabled={!body.trim() || saving} type="submit" variant="outlined">
+              {saving ? "Saving" : "Save"}
+            </Button>
+            <Button disabled={!body.trim() || saving} onClick={() => void savePost(true)} startIcon={<SendRounded />} variant="contained">
+              Save to Home
+            </Button>
+          </div>
+          {status ? <p className="post-edit-status">{status}</p> : null}
+        </form>
+      </div>
+    </section>
+  );
+}
+
 function ProfilePanel({
+  chatUsers,
   followersCount,
   followingCount,
   health,
+  onEditPost,
   onLogout,
   onOpenSettings,
+  onOpenPost,
+  onStartCreating,
   posts,
   profile,
   user,
 }: {
+  chatUsers: ChatUser[];
   followersCount: number;
   followingCount: number;
   health: HealthResponse | null;
+  onEditPost: (post: DisplayPost) => void;
   onLogout: () => void;
   onOpenSettings: () => void;
+  onOpenPost: (post: DisplayPost) => void;
+  onStartCreating: () => void;
   posts: DisplayPost[];
   profile: ProfileResponse | null;
   user: AuthUser;
 }) {
-  const profilePosts = posts.slice(0, 9);
-  const coverImage = profilePosts[0]?.gallery[0] ?? postImageFor(user.id);
-  const handle = `@${user.name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}`;
+  const [profileTab, setProfileTab] = useState<"posts" | "liked" | "groups">("posts");
+  const [profileStatus, setProfileStatus] = useState("");
+  const [listType, setListType] = useState<"followers" | "following" | null>(null);
+
+  const profilePosts = useMemo(() => posts.filter(p => p.author.id === user.id), [posts, user.id]);
+  const coverImage = profile?.coverUrl || (profilePosts.length > 0 ? profilePosts[0].gallery[0] : "");
+  const avatarImage = profile?.avatarUrl || user.avatarUrl;
+  const handle = `@${user.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+  const visiblePosts = profileTab === "posts" ? profilePosts : profileTab === "liked" ? [...posts].sort((left, right) => right.likes - left.likes).slice(0, 6) : profilePosts.filter((post) => post.mood.toLowerCase().includes("collab") || post.tags.includes("creator"));
 
   return (
     <section className="profile-panel">
       <Fade in timeout={450}>
         <div className="mx-auto min-h-[calc(100vh-96px)] max-w-5xl">
-          <Paper elevation={0} sx={{ overflow: "hidden", borderRadius: "34px", background: "#07090f", color: "#fff", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <div className="relative min-h-[430px]">
-              <img alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" src={coverImage} />
+          <Paper className="own-profile-card" elevation={0}>
+            <div className="own-profile-cover">
+              {coverImage ? <img alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" src={coverImage} /> : <div className="profile-cover-empty" />}
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,9,15,0.08),rgba(7,9,15,0.7)_58%,#07090f_100%)]" />
               <div className="relative z-10 flex justify-between p-5">
                 <IconButton className="!bg-black/25 !text-white backdrop-blur" onClick={onOpenSettings}>
@@ -1953,19 +2547,26 @@ function ProfilePanel({
 
               <div className="absolute inset-x-0 bottom-0 z-10 px-5 pb-6 text-center">
                 <Badge overlap="circular" badgeContent={<AutoAwesomeRounded sx={{ fontSize: 14, color: "#fff" }} />} color="primary">
-                  <Avatar src={profileImageFor(user.name)} sx={{ width: 118, height: 118, mx: "auto", border: "4px solid #fff", boxShadow: "0 22px 60px rgba(0,0,0,0.42)" }} />
+                  <Avatar src={avatarImage} sx={{ width: 84, height: 84, mx: "auto", border: "3px solid #fff", boxShadow: "0 18px 42px rgba(0,0,0,0.38)", fontWeight: 900 }}>
+                    {firstName(user.name).slice(0, 1)}
+                  </Avatar>
                 </Badge>
-                <h1 className="mt-3 text-3xl font-black md:text-4xl">{user.name}</h1>
+                <h1 className="mt-3 text-2xl font-black md:text-3xl">{user.name}</h1>
                 <p className="m-0 text-sm font-bold text-white/65">{handle}</p>
                 <EmojiText className="mx-auto mt-3 block max-w-xl text-sm leading-6 text-white/70" text={profile?.bio || profile?.headline || "Creator stories, live drops, and studio updates. :sparkles:"} />
+                {profile?.websiteUrl ? <a className="profile-web-link" href={profile.websiteUrl} target="_blank" rel="noreferrer">{profile.websiteUrl}</a> : null}
               </div>
             </div>
 
             <div className="border-y border-white/10 px-4 py-5">
               <div className="mx-auto grid max-w-xl grid-cols-3 text-center">
-                <span><strong className="block text-xl">{posts.length}</strong><small className="text-white/50">Posts</small></span>
-                <span><strong className="block text-xl">{compactNumber(followersCount)}</strong><small className="text-white/50">Followers</small></span>
-                <span><strong className="block text-xl">{followingCount}</strong><small className="text-white/50">Following</small></span>
+                <span><strong className="block text-xl">{profilePosts.length}</strong><small className="text-white/50">Posts</small></span>
+                <button type="button" onClick={() => setListType("followers")} className="bg-transparent text-white cursor-pointer hover:opacity-80 transition">
+                  <strong className="block text-xl">{compactNumber(followersCount)}</strong><small className="text-white/50">Followers</small>
+                </button>
+                <button type="button" onClick={() => setListType("following")} className="bg-transparent text-white cursor-pointer hover:opacity-80 transition">
+                  <strong className="block text-xl">{followingCount}</strong><small className="text-white/50">Following</small>
+                </button>
               </div>
             </div>
 
@@ -1973,34 +2574,65 @@ function ProfilePanel({
               <Button onClick={onOpenSettings} sx={{ borderRadius: "999px", color: "#07090f", px: 3, background: "#fff", fontWeight: 900 }} variant="contained">
                 Edit profile
               </Button>
-              <IconButton className="!border !border-white/10 !bg-white/10 !text-white">
+              <IconButton className="!border !border-white/10 !bg-white/10 !text-white" onClick={onOpenSettings} aria-label="Edit profile components">
                 <PersonAddAlt1Rounded />
               </IconButton>
-              <IconButton className="!border !border-white/10 !bg-white/10 !text-white">
+              <IconButton className="!border !border-white/10 !bg-white/10 !text-white" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/?profile=${user.id}`).then(() => setProfileStatus("Profile link copied."))} aria-label="Copy profile link">
                 <NorthEastRounded />
               </IconButton>
               <Chip label={health?.status === "ok" ? "Live" : "Syncing"} sx={{ color: "#fff", background: "rgba(255,255,255,0.1)", fontWeight: 800 }} />
+              {profileStatus ? <span className="profile-action-status">{profileStatus}</span> : null}
             </div>
 
             <nav className="grid grid-cols-3 border-b border-white/10 text-center text-white/45">
-              <button className="border-b-2 border-white py-3 text-white" type="button"><PlayCircleRounded fontSize="small" /></button>
-              <button className="py-3" type="button"><FavoriteRounded fontSize="small" /></button>
-              <button className="py-3" type="button"><GroupsRounded fontSize="small" /></button>
+              <button className={profileTab === "posts" ? "border-b-2 border-white py-3 text-white" : "py-3"} type="button" onClick={() => setProfileTab("posts")}><PlayCircleRounded fontSize="small" /></button>
+              <button className={profileTab === "liked" ? "border-b-2 border-white py-3 text-white" : "py-3"} type="button" onClick={() => setProfileTab("liked")}><FavoriteRounded fontSize="small" /></button>
+              <button className={profileTab === "groups" ? "border-b-2 border-white py-3 text-white" : "py-3"} type="button" onClick={() => setProfileTab("groups")}><GroupsRounded fontSize="small" /></button>
             </nav>
 
             <div className="grid grid-cols-3 gap-0.5 bg-black">
-              {profilePosts.map((post, index) => (
-                <button className="group relative aspect-[0.78] overflow-hidden bg-zinc-950 text-left" key={post.id} type="button">
-                  <img alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" src={post.gallery[0]} />
+              {visiblePosts.map((post) => (
+                <button className="group relative aspect-[0.78] overflow-hidden bg-zinc-950 text-left" key={post.id} type="button" onClick={() => onEditPost(post)}>
+                  {post.gallery[0] ? <img alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" src={post.gallery[0]} /> : <span className="profile-post-empty">{post.mood}</span>}
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-2 text-white">
-                    <span className="flex items-center gap-1 text-[11px] font-black"><PlayCircleRounded sx={{ fontSize: 13 }} />{compactNumber(9000 + post.promotionScore * (index + 5))}</span>
+                    <span className="flex items-center gap-1 text-[11px] font-black"><TextFieldsRounded sx={{ fontSize: 13 }} />Edit</span>
                   </div>
                 </button>
               ))}
+              {!visiblePosts.length ? (
+                <div className="profile-empty-grid" style={{ gridColumn: 'span 3', padding: '80px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                  <div className="profile-empty-icon-wrap">
+                    <PlayCircleRounded sx={{ fontSize: 32, opacity: 0.3 }} />
+                  </div>
+                  <h3 className="m-0 text-lg font-black">No {profileTab} yet</h3>
+                  <p className="mt-2 text-sm text-white/50 max-w-xs">
+                    {profileTab === "posts"
+                      ? "Your creative space is empty. Share your first story or drop a product room to get started."
+                      : profileTab === "liked"
+                        ? "Posts you've promoted will appear here for your audience to see."
+                        : "Collaborations and group project updates are stored here."
+                    }
+                  </p>
+                  {profileTab === "posts" && (
+                    <Button onClick={onStartCreating} sx={{ mt: 3, borderRadius: '999px', textTransform: 'none', fontWeight: 900, px: 4, background: 'var(--accent)', color: 'var(--text-dark)' }} variant="contained">
+                      Create first post
+                    </Button>
+                  )}
+                </div>
+              ) : null}
             </div>
           </Paper>
         </div>
       </Fade>
+      {listType && (
+        <UserListModal
+          posts={posts}
+          type={listType}
+          users={chatUsers}
+          onClose={() => setListType(null)}
+          onSelect={onOpenPost}
+        />
+      )}
     </section>
   );
 }
@@ -2010,6 +2642,7 @@ function ProfileSettingsPanel({
   onLogout,
   onSaveProfile,
   onThemeChange,
+  onUploadMedia,
   profile,
   theme,
   themes,
@@ -2017,34 +2650,59 @@ function ProfileSettingsPanel({
 }: {
   onBack: () => void;
   onLogout: () => void;
-  onSaveProfile: (input: { name: string; bio: string; headline: string; location: string }) => Promise<void>;
+  onSaveProfile: (input: { name: string; bio: string; headline: string; location: string; avatarUrl?: string; coverUrl?: string; websiteUrl?: string }) => Promise<void>;
   onThemeChange: (theme: ThemeName) => void;
+  onUploadMedia: (file: File) => Promise<{ url: string; mediaType: "image" | "video" | string }>;
   profile: ProfileResponse | null;
   theme: ThemeName;
   themes: typeof themeOptions;
   user: AuthUser;
 }) {
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatarUrl ?? user.avatarUrl ?? "");
   const [bio, setBio] = useState(profile?.bio ?? "");
+  const [coverUrl, setCoverUrl] = useState(profile?.coverUrl ?? "");
   const [headline, setHeadline] = useState(profile?.headline ?? "Creator");
   const [location, setLocation] = useState(profile?.location ?? "");
   const [name, setName] = useState(user.name);
   const [saving, setSaving] = useState(false);
+  const [uploadingProfileMedia, setUploadingProfileMedia] = useState(false);
+  const [websiteUrl, setWebsiteUrl] = useState(profile?.websiteUrl ?? "");
 
   useEffect(() => {
     setName(user.name);
+    setAvatarUrl(profile?.avatarUrl ?? user.avatarUrl ?? "");
     setBio(profile?.bio ?? "");
+    setCoverUrl(profile?.coverUrl ?? "");
     setHeadline(profile?.headline ?? "Creator");
     setLocation(profile?.location ?? "");
-  }, [profile?.bio, profile?.headline, profile?.location, user.name]);
+    setWebsiteUrl(profile?.websiteUrl ?? "");
+  }, [profile?.avatarUrl, profile?.bio, profile?.coverUrl, profile?.headline, profile?.location, profile?.websiteUrl, user.avatarUrl, user.name]);
 
   async function submitProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     try {
-      await onSaveProfile({ name, bio, headline, location });
+      await onSaveProfile({ name, bio, headline, location, avatarUrl, coverUrl, websiteUrl });
       onBack();
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function uploadProfileMedia(file: File | null, target: "avatar" | "cover") {
+    if (!file) {
+      return;
+    }
+    setUploadingProfileMedia(true);
+    try {
+      const upload = await onUploadMedia(file);
+      if (target === "avatar") {
+        setAvatarUrl(upload.url);
+      } else {
+        setCoverUrl(upload.url);
+      }
+    } finally {
+      setUploadingProfileMedia(false);
     }
   }
 
@@ -2059,25 +2717,44 @@ function ProfileSettingsPanel({
       </header>
 
       <div className="settings-profile-card">
-        <img alt="" src={profileImageFor(user.name)} />
-        <h1>{user.name}</h1>
-        <p>{user.email}</p>
-        <button type="button">View profile</button>
+        <div className="settings-cover-preview">
+          {coverUrl ? <img alt="" src={coverUrl} /> : <span />}
+        </div>
+        <div className="settings-profile-inline">
+          {avatarUrl ? <img alt="" src={avatarUrl} /> : <strong>{firstName(user.name).slice(0, 1)}</strong>}
+          <span>
+            <h1>{user.name}</h1>
+            <p>{user.email}</p>
+          </span>
+          <button type="button" onClick={onBack}>View</button>
+        </div>
       </div>
 
       <form id="profile-settings-form" className="settings-form" onSubmit={(event) => void submitProfile(event)}>
         <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
         <label>Headline<input value={headline} onChange={(event) => setHeadline(event.target.value)} /></label>
         <label>Location<input value={location} onChange={(event) => setLocation(event.target.value)} /></label>
+        <label>Website<input value={websiteUrl} onChange={(event) => setWebsiteUrl(event.target.value)} placeholder="https://your-site.com" /></label>
         <label>Bio<textarea value={bio} onChange={(event) => setBio(event.target.value)} /></label>
+        <div className="profile-media-actions">
+          <label>
+            <ImageRounded fontSize="small" />
+            Avatar
+            <input accept="image/*" type="file" onChange={(event) => void uploadProfileMedia(event.target.files?.[0] ?? null, "avatar")} />
+          </label>
+          <label>
+            <Crop169Rounded fontSize="small" />
+            Cover
+            <input accept="image/*" type="file" onChange={(event) => void uploadProfileMedia(event.target.files?.[0] ?? null, "cover")} />
+          </label>
+          {uploadingProfileMedia ? <span>Uploading...</span> : null}
+        </div>
       </form>
 
       <div className="settings-list">
-        <button type="button"><span>Show me away</span><strong>Off</strong></button>
-        <button type="button"><span>My Profile</span><strong>Edit</strong></button>
-        <button type="button"><span>Join a Team</span><strong>New</strong></button>
-        <button type="button"><span>Share Profile</span><strong>Copy</strong></button>
-        <button type="button"><span>Activity Sync</span><strong>On</strong></button>
+        <button type="button" onClick={onBack}><span>My Profile</span><strong>View</strong></button>
+        <button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/?profile=${user.id}`)}><span>Share Profile</span><strong>Copy</strong></button>
+        <button type="button" onClick={() => onThemeChange(theme)}><span>Activity Sync</span><strong>On</strong></button>
       </div>
 
       <section className="settings-card">
@@ -2123,12 +2800,25 @@ function ProfileSettingsPanel({
   );
 }
 
-function PublicProfileScreen({ post, onBack }: { post: DisplayPost; onBack: () => void }) {
-  const followerCount = compactNumber(24000 + post.id * 7);
-  const followingCount = compactNumber(180 + (post.id % 90));
-  const creationCount = compactNumber(680 + (post.id % 160));
-  const gallery = post.gallery.length >= 3 ? post.gallery : [postImageFor(post.id), postImageFor(post.id + 1), postImageFor(post.id + 2)];
-  const handle = `@${post.author.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`;
+function PublicProfileScreen({
+  post,
+  onBack,
+  chatUsers,
+  onOpenPost,
+  posts,
+}: {
+  post: DisplayPost;
+  onBack: () => void;
+  chatUsers: ChatUser[];
+  onOpenPost: (post: DisplayPost) => void;
+  posts: DisplayPost[];
+}) {
+  const followerCount = compactNumber(1200 + indexFor(post.author.name, 8200));
+  const followingCount = compactNumber(indexFor(post.author.name, 400) + 120);
+  const creationCount = compactNumber(Math.max(1, post.gallery.length));
+  const gallery = post.gallery.length ? post.gallery : [profileImageFor(post.author.name)];
+  const handle = `@${post.author.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+  const [listType, setListType] = useState<"followers" | "following" | null>(null);
 
   return (
     <section className="public-profile" aria-label={`${post.author.name} profile`}>
@@ -2156,8 +2846,12 @@ function PublicProfileScreen({ post, onBack }: { post: DisplayPost; onBack: () =
           <p className="public-handle">{handle}</p>
 
           <div className="public-profile-stats" aria-label="Profile statistics">
-            <span><strong>{followingCount}</strong> Following</span>
-            <span><strong>{followerCount}</strong> Followers</span>
+            <button type="button" onClick={() => setListType("following")} className="bg-transparent text-white cursor-pointer hover:opacity-80 transition text-left">
+              <strong>{followingCount}</strong> Following
+            </button>
+            <button type="button" onClick={() => setListType("followers")} className="bg-transparent text-white cursor-pointer hover:opacity-80 transition text-left">
+              <strong>{followerCount}</strong> Followers
+            </button>
             <span><strong>{creationCount}</strong> Creations</span>
           </div>
 
@@ -2181,11 +2875,63 @@ function PublicProfileScreen({ post, onBack }: { post: DisplayPost; onBack: () =
         {gallery.slice(0, 6).map((image, index) => (
           <button className={index === 0 ? "featured" : ""} type="button" key={image}>
             <img alt="" src={image} />
-            <span>{index === 0 ? "Latest drop" : post.tags[index % post.tags.length]}</span>
+            <span>{index === 0 ? "Latest drop" : (post.tags[index % Math.max(post.tags.length, 1)] ?? post.mediaType)}</span>
           </button>
         ))}
       </div>
+      {listType && (
+        <UserListModal
+          posts={posts}
+          type={listType}
+          users={chatUsers}
+          onClose={() => setListType(null)}
+          onSelect={onOpenPost}
+        />
+      )}
     </section>
+  );
+}
+
+function DesktopSidebar({
+  activeTab,
+  health,
+  notificationCount,
+  onTabChange,
+  user,
+}: {
+  activeTab: HomeTab;
+  health: HealthResponse | null;
+  notificationCount: number;
+  onTabChange: (tab: HomeTab) => void;
+  user: AuthUser;
+}) {
+  return (
+    <aside className="desktop-sidebar" aria-label="Desktop navigation">
+      <button className="desktop-brand" type="button" onClick={() => onTabChange("home")} aria-label="Creators home">
+        <span>C</span>
+      </button>
+      <nav>
+        {bottomTabs.map((tab) => (
+          <button
+            className={activeTab === tab.id ? "active" : ""}
+            key={tab.id}
+            type="button"
+            onClick={() => onTabChange(tab.id)}
+            aria-current={activeTab === tab.id ? "page" : undefined}
+          >
+            <span className={`nav-glyph ${tab.icon}`} aria-hidden="true" />
+            <small>{tab.label}</small>
+            {tab.id === "messages" && notificationCount ? <i>{notificationCount}</i> : null}
+          </button>
+        ))}
+      </nav>
+      <div className="desktop-sidebar-foot">
+        <span className={health?.status === "ok" ? "service-dot ok" : "service-dot"} aria-label={`API ${health?.status ?? "checking"}`} />
+        <button type="button" onClick={() => onTabChange("profiles")} aria-label="Open profile">
+          {user.avatarUrl ? <img alt="" src={user.avatarUrl} /> : <strong>{firstName(user.name).slice(0, 1).toUpperCase()}</strong>}
+        </button>
+      </div>
+    </aside>
   );
 }
 
@@ -2326,18 +3072,18 @@ function AuthDialog({
 }
 
 function createDisplayPosts(posts: FeedPost[]) {
-  const mapped = posts.map<DisplayPost>((post, index) => {
-    const leadImage = post.mediaUrl || postImageFor(post.id);
+  const mapped = posts.map<DisplayPost>((post) => {
+    const gallery = post.gallery.length ? post.gallery : post.mediaUrl ? [post.mediaUrl] : [];
     return {
       ...post,
-      comments: 348 - index * 32,
-      gallery: [leadImage, postImageFor(post.id + 1), postImageFor(post.id + 2), postImageFor(post.id + 3), postImageFor(post.id + 4)],
-      likes: 1125 - index * 121,
-      promotionScore: Math.max(44, Math.min(99, 96 - index * 6 + (post.id % 7))),
-      tags: [post.mood.toLowerCase().replace(/\s+/g, ""), "creator"],
+      comments: post.commentCount,
+      gallery,
+      likes: post.likeCount,
+      promotionScore: post.promotionScore,
+      tags: post.tags.length ? post.tags : [post.mood.toLowerCase().replace(/\s+/g, ""), post.mediaType].filter(Boolean),
     };
   });
-  return mapped.sort((left, right) => right.promotionScore - left.promotionScore);
+  return mapped.sort((left, right) => right.promotionScore - left.promotionScore || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
 function timeAgo(value: string) {
@@ -2383,38 +3129,11 @@ function webFilterFor(filterName: string) {
 }
 
 function profileImageFor(seed: string) {
-  const images = [
-    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=240&q=80",
-    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80",
-    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=240&q=80",
-    "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=240&q=80",
-    "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=240&q=80",
-    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=240&q=80",
-  ];
-  return images[indexFor(seed, images.length)];
+  return `https://api.dicebear.com/9.x/thumbs/svg?seed=${encodeURIComponent(seed || "creator")}`;
 }
 
-function postImageFor(seed: number) {
-  const images = [
-    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1493246507139-91e8fad9978e?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1000&q=82",
-  ];
-  return images[Math.abs(seed) % images.length];
-}
-
-function streamImageFor(seed: number) {
-  const images = [
-    "https://images.unsplash.com/photo-1509967419530-da38b4704bc6?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1000&q=82",
-  ];
-  return images[Math.abs(seed) % images.length];
+function liveCoverFor(room?: LiveRoom | null) {
+  return room?.coverUrl || "";
 }
 
 function indexFor(value: string, length: number) {
@@ -2427,4 +3146,101 @@ function indexFor(value: string, length: number) {
 
 function isThemeName(value: string | null): value is ThemeName {
   return value === "default" || value === "dark" || value === "beautiful" || value === "blueish" || value === "greenish" || value === "whiteish";
+}
+
+function UserListModal({
+  posts,
+  type,
+  users,
+  onClose,
+  onSelect,
+}: {
+  posts: DisplayPost[];
+  type: "followers" | "following";
+  users: ChatUser[];
+  onClose: () => void;
+  onSelect: (post: DisplayPost) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xl">
+      <Paper
+        elevation={0}
+        sx={{
+          width: "100%",
+          maxWidth: 400,
+          borderRadius: "28px",
+          background: "var(--panel-bg)",
+          border: "1px solid var(--line-soft)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: "80vh",
+        }}
+      >
+        <header className="flex items-center justify-between p-4 border-b border-white/10">
+          <h2 className="m-0 text-xl font-black capitalize">{type}</h2>
+          <IconButton onClick={onClose} sx={{ color: "#fff" }}>
+            <ArrowBackRounded />
+          </IconButton>
+        </header>
+        <div className="flex-1 overflow-y-auto p-2">
+          {users.map((u) => (
+            <div
+              key={u.id}
+              className="flex cursor-pointer items-center gap-3 rounded-2xl p-3 transition hover:bg-white/5"
+              onClick={() => {
+                const userPost = posts.find(p => p.author.id === u.id);
+                if (userPost) {
+                  onSelect(userPost);
+                } else {
+                  // Create a virtual post for navigation purposes
+                  onSelect({
+                    id: -(u.id),
+                    author: { id: u.id, name: u.name, email: u.email, provider: 'seed', avatarUrl: profileImageFor(u.name), createdAt: new Date().toISOString() },
+                    body: "This creator hasn't shared any posts yet.",
+                    mood: "New Creator",
+                    gallery: [],
+                    comments: 0,
+                    likes: 0,
+                    promotionScore: 0,
+                    tags: ["creator"],
+                    createdAt: new Date().toISOString(),
+                    mediaUrl: "",
+                    mediaType: "image",
+                    filterName: "Original",
+                    overlayText: "",
+                    sticker: "",
+                    textColor: "#fff",
+                    backgroundTone: "midnight",
+                    aspectRatio: "4:5",
+                    cropZoom: 1,
+                    cropX: 50,
+                    cropY: 50,
+                    rotation: 0,
+                    commentCount: 0,
+                    likeCount: 0
+                  });
+                }
+                onClose();
+              }}
+            >
+              <Avatar src={profileImageFor(u.name)} sx={{ width: 44, height: 44 }} />
+              <div className="min-w-0 flex-1">
+                <p className="m-0 font-bold truncate">{u.name}</p>
+                <p className="m-0 text-xs text-white/50 truncate">{u.headline}</p>
+              </div>
+              <Button
+                size="small"
+                variant="outlined"
+                sx={{ borderRadius: '999px', textTransform: 'none', fontWeight: 900, borderColor: 'var(--line-soft)', color: '#fff' }}
+              >
+                View
+              </Button>
+            </div>
+          ))}
+          {!users.length && <p className="p-8 text-center text-white/40">No users found.</p>}
+        </div>
+      </Paper>
+    </div>
+  );
 }

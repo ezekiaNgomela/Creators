@@ -5,7 +5,7 @@ import { useApp } from "@/src/providers/app-provider";
 import { spacing } from "@/src/theme/tokens";
 
 export function HomeScreen() {
-  const { displayPosts, health, liveRooms, openLive, profile, session } = useApp();
+  const { displayPosts, health, liveRooms, markAllNotificationsRead, notifications, openLive, profile, session } = useApp();
 
   return (
     <ScrollView
@@ -17,6 +17,8 @@ export function HomeScreen() {
         displayPosts={displayPosts}
         health={health}
         liveRooms={liveRooms}
+        notificationCount={notifications.filter((notification) => !notification.readAt).length}
+        onOpenNotifications={() => void markAllNotificationsRead()}
         onOpenLive={openLive}
         profile={profile}
         sessionName={session?.name}

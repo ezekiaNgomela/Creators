@@ -78,7 +78,8 @@ export function ChannelsSlider({ channels, onOpenChannel }: ChannelsSliderProps)
             key={room.id}
             onPress={() => onOpenChannel(room)}
             style={{
-              width: cardWidth,
+              width: cardWidth, // Keep responsive width
+              minHeight: 380,
               overflow: "hidden",
               borderRadius: 28,
               backgroundColor: "#fff",
@@ -115,6 +116,16 @@ export function ChannelsSlider({ channels, onOpenChannel }: ChannelsSliderProps)
                 <Text style={{ color: "#fff", fontSize: 11, fontWeight: "900" as const }}>{price}</Text>
               </View>
             </View>
+
+            <Pressable
+              onPress={() => onOpenChannel(room)}
+              style={{
+                position: 'absolute', right: spacing.lg, bottom: spacing.lg, // Move button to bottom
+                backgroundColor: sliderColors.accent, borderRadius: 20, paddingHorizontal: 20, paddingVertical: 10,
+                shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4.65, elevation: 8
+              }}>
+              <Text style={{ color: '#fff', fontWeight: '900' }}>JOIN LIVE</Text>
+            </Pressable>
 
             <View
               style={{

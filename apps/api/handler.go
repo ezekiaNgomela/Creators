@@ -2,9 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -14,6 +21,7 @@ type Handler struct {
 	Service        *DataService
 	Redis          *redis.Client
 	MinioHealthURL string
+	UploadDir      string
 	JWTSecret      string
 	JWTIssuer      string
 }
@@ -266,6 +274,28 @@ func (h *Handler) HandlePosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPatch {
+		var input struct {
+			ID int64 `json:"id"`
+			PostInput
+		}
+		if err := decodeJSON(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		post, err := h.Service.UpdatePost(r.Context(), userID, input.ID, input.PostInput)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, publicError(err))
+			return
+		}
+		notification, err := h.Service.CreateNotification(r.Context(), userID, "Post updated", "Your profile edit is live on the home feed.", "post", "/profile")
+		if err == nil {
+			h.publishRealtime(r.Context(), userID, "notification", notification)
+		}
+		writeJSON(w, http.StatusOK, map[string]FeedPost{"post": post})
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -281,7 +311,97 @@ func (h *Handler) HandlePosts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, publicError(err))
 		return
 	}
+	notification, err := h.Service.CreateNotification(r.Context(), userID, "Post published", "Your Studio edit is live on your profile.", "post", "/studio")
+	if err == nil {
+		h.publishRealtime(r.Context(), userID, "notification", notification)
+	}
 	writeJSON(w, http.StatusCreated, map[string]FeedPost{"post": post})
+}
+
+func (h *Handler) HandleMediaUpload(w http.ResponseWriter, r *http.Request) {
+	_, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 80<<20)
+	if err := r.ParseMultipartForm(80 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "media upload must be smaller than 80MB")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer file.Close()
+
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, "could not read file")
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		writeError(w, http.StatusBadRequest, "could not read file")
+		return
+	}
+	mimeType := http.DetectContentType(buffer[:n])
+	mediaType := "image"
+	if strings.HasPrefix(mimeType, "video/") {
+		mediaType = "video"
+	} else if !strings.HasPrefix(mimeType, "image/") {
+		writeError(w, http.StatusBadRequest, "only image and video files are supported")
+		return
+	}
+
+	extension := strings.ToLower(filepath.Ext(header.Filename))
+	if extension == "" {
+		extension = extensionForMime(mimeType)
+	}
+	if !allowedMediaExtension(extension) {
+		writeError(w, http.StatusBadRequest, "unsupported media extension")
+		return
+	}
+
+	uploadDir := valueOrDefault("UPLOAD_DIR", h.UploadDir)
+	if uploadDir == "" {
+		uploadDir = "uploads"
+	}
+	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not prepare media storage")
+		return
+	}
+	fileName := randomFileName(extension)
+	destination, err := os.Create(filepath.Join(uploadDir, fileName))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not save media")
+		return
+	}
+	defer destination.Close()
+	if _, err := io.Copy(destination, file); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not save media")
+		return
+	}
+
+	baseURL := valueOrDefault("PUBLIC_BASE_URL", "")
+	if baseURL == "" {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		baseURL = scheme + "://" + r.Host
+	}
+	writeJSON(w, http.StatusCreated, MediaUploadResponse{
+		URL:       strings.TrimRight(baseURL, "/") + "/uploads/" + fileName,
+		MediaType: mediaType,
+		MimeType:  mimeType,
+		FileName:  fileName,
+	})
 }
 
 func (h *Handler) HandleProfile(w http.ResponseWriter, r *http.Request) {
@@ -300,16 +420,19 @@ func (h *Handler) HandleProfile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, profile)
 	case http.MethodPatch:
 		var input struct {
-			Name     string `json:"name"`
-			Bio      string `json:"bio"`
-			Headline string `json:"headline"`
-			Location string `json:"location"`
+			Name       string `json:"name"`
+			Bio        string `json:"bio"`
+			Headline   string `json:"headline"`
+			Location   string `json:"location"`
+			AvatarURL  string `json:"avatarUrl"`
+			CoverURL   string `json:"coverUrl"`
+			WebsiteURL string `json:"websiteUrl"`
 		}
 		if err := decodeJSON(r, &input); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		profile, err := h.Service.UpdateProfile(r.Context(), userID, input.Name, input.Bio, input.Headline, input.Location)
+		profile, err := h.Service.UpdateProfile(r.Context(), userID, input.Name, input.Bio, input.Headline, input.Location, input.AvatarURL, input.CoverURL, input.WebsiteURL)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, publicError(err))
 			return
@@ -361,6 +484,117 @@ func (h *Handler) HandleLiveRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rating)
+}
+
+func (h *Handler) HandleNotifications(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		notifications, err := h.Service.ListNotifications(r.Context(), userID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load notifications")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string][]Notification{"notifications": notifications})
+	case http.MethodPatch:
+		if err := h.Service.MarkNotificationsRead(r.Context(), userID); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not update notifications")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (h *Handler) HandleCalls(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		callID, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+		if err != nil || callID <= 0 {
+			writeError(w, http.StatusBadRequest, "valid call id is required")
+			return
+		}
+		call, err := h.Service.FindCallSession(r.Context(), userID, callID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "call session not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]CallSession{"call": call})
+	case http.MethodPost:
+		var input struct {
+			RoomID string `json:"roomId"`
+			Mode   string `json:"mode"`
+		}
+		if err := decodeJSON(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		call, err := h.Service.CreateCallSession(r.Context(), userID, input.RoomID, input.Mode)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, publicError(err))
+			return
+		}
+		for _, participant := range call.Participants {
+			if participant.ID == userID {
+				continue
+			}
+			notification, err := h.Service.CreateNotification(
+				r.Context(),
+				participant.ID,
+				"Incoming "+call.Mode+" call",
+				call.CreatedBy.Name+" invited you to a protected call room.",
+				"call",
+				"/calls?id="+strconv.FormatInt(call.ID, 10),
+			)
+			if err == nil {
+				h.publishRealtime(r.Context(), participant.ID, "notification", notification)
+			}
+			h.publishRealtime(r.Context(), participant.ID, "call_invite", call)
+		}
+		writeJSON(w, http.StatusCreated, map[string]CallSession{"call": call})
+	case http.MethodPatch:
+		var input struct {
+			ID     int64  `json:"id"`
+			Action string `json:"action"`
+		}
+		if err := decodeJSON(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		var (
+			call CallSession
+			err  error
+		)
+		switch input.Action {
+		case "join":
+			call, err = h.Service.JoinCallSession(r.Context(), userID, input.ID)
+		case "end", "leave":
+			call, err = h.Service.EndCallSession(r.Context(), userID, input.ID)
+		default:
+			writeError(w, http.StatusBadRequest, "action must be join, leave, or end")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, publicError(err))
+			return
+		}
+		for _, participant := range call.Participants {
+			h.publishRealtime(r.Context(), participant.ID, "call_update", call)
+		}
+		writeJSON(w, http.StatusOK, map[string]CallSession{"call": call})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 func (h *Handler) HandleComments(w http.ResponseWriter, r *http.Request) {
@@ -575,4 +809,56 @@ func firstNonBlank(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func extensionForMime(mimeType string) string {
+	switch mimeType {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	case "video/mp4":
+		return ".mp4"
+	case "video/webm":
+		return ".webm"
+	case "video/quicktime":
+		return ".mov"
+	default:
+		return ".bin"
+	}
+}
+
+func allowedMediaExtension(extension string) bool {
+	switch strings.ToLower(extension) {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm":
+		return true
+	default:
+		return false
+	}
+}
+
+func randomFileName(extension string) string {
+	buffer := make([]byte, 16)
+	if _, err := rand.Read(buffer); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36) + extension
+	}
+	return hex.EncodeToString(buffer) + extension
+}
+
+func (h *Handler) publishRealtime(ctx context.Context, userID int64, eventType string, payload any) {
+	if h.Redis == nil {
+		return
+	}
+	message, err := json.Marshal(map[string]any{
+		"type": eventType,
+		"data": payload,
+	})
+	if err != nil {
+		return
+	}
+	_ = h.Redis.Publish(ctx, realtimeUserChannel(userID), message).Err()
 }

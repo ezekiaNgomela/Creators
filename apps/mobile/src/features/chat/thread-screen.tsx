@@ -13,8 +13,9 @@ import { radius, spacing } from "@/src/theme/tokens";
 
 export function ThreadScreen() {
   const { contactId } = useLocalSearchParams<{ contactId: string }>();
-  const { addUsersToActiveChat, chatContacts, chatMessages, chatUsers, loadThread, sendMessage } = useApp();
+  const { addUsersToActiveChat, chatContacts, chatMessages, chatUsers, loadThread, sendMessage, startCall } = useApp();
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [callStatus, setCallStatus] = useState("");
   const { width } = useWindowDimensions();
 
   const contact = useMemo(
@@ -32,6 +33,23 @@ export function ThreadScreen() {
         ? current.filter((id) => id !== userId)
         : [...current, userId]
     ));
+  }
+
+  async function openCall(mode: "voice" | "video") {
+    if (!contactId) {
+      return;
+    }
+    setCallStatus(`Starting ${mode} call...`);
+    try {
+      const call = await startCall({ mode, roomId: contactId });
+      if (mode === "voice") {
+        router.push({ pathname: "/conversations/[contactId]/voice", params: { callId: String(call.id), contactId } });
+        return;
+      }
+      router.push({ pathname: "/conversations/[contactId]/video", params: { callId: String(call.id), contactId } });
+    } catch (err) {
+      setCallStatus(err instanceof Error ? err.message : "Could not start call.");
+    }
   }
 
   useEffect(() => {
@@ -111,15 +129,19 @@ export function ThreadScreen() {
                 <CallActionButton
                   icon="call-outline"
                   label="Voice"
-                  onPress={() => router.push({ pathname: "/conversations/[contactId]/voice", params: { contactId: contactId ?? "" } })}
+                  onPress={() => void openCall("voice")}
                 />
                 <CallActionButton
                   icon="videocam-outline"
                   label="Video"
-                  onPress={() => router.push({ pathname: "/conversations/[contactId]/video", params: { contactId: contactId ?? "" } })}
+                  onPress={() => void openCall("video")}
                 />
               </View>
             </View>
+
+            {callStatus ? (
+              <Text style={{ color: chatPalette.soft, fontSize: 12, fontWeight: "800" as const }}>{callStatus}</Text>
+            ) : null}
 
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
               <ThreadPill label={contact?.type === "group" ? "Group room" : "Direct thread"} tone="accentAlt" />

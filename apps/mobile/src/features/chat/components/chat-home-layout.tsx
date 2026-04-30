@@ -20,9 +20,11 @@ type ChatHomeLayoutProps = {
   contacts: ChatContact[];
   filteredContacts: ChatContact[];
   mode: ChatMode;
+  notificationCount: number;
   onModeChange: (mode: ChatMode) => void;
   onCreateDirectChat: (participantId: number) => void;
   onCreateGroupChat: (input: { title: string; participantIds: number[] }) => void;
+  onOpenNotifications: () => void;
   onOpenThread: (contactId: string) => void;
   onOpenVideo: (contactId: string) => void;
   onOpenVoice: (contactId: string) => void;
@@ -38,9 +40,11 @@ export function ChatHomeLayout({
   contacts,
   filteredContacts,
   mode,
+  notificationCount,
   onCreateDirectChat,
   onCreateGroupChat,
   onModeChange,
+  onOpenNotifications,
   onOpenThread,
   onOpenVideo,
   onOpenVoice,
@@ -92,7 +96,7 @@ export function ChatHomeLayout({
 
           <View style={{ flexDirection: "row", gap: spacing.xs }}>
             <TopOrb icon="menu" onPress={() => router.push("/settings")} />
-            <TopOrb badge="3" icon="notifications-outline" />
+            <TopOrb badge={notificationCount ? String(notificationCount) : undefined} icon="notifications-outline" onPress={onOpenNotifications} />
           </View>
         </View>
 
@@ -151,108 +155,112 @@ export function ChatHomeLayout({
           ))}
         </ScrollView>
 
-          <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
-            <StatCard label="Rooms" value={`${filteredContacts.length}`} />
-            <StatCard label="Call ready" value={activeContact ? firstName(activeContact.name) : "Now"} accent />
-            <StatCard label="Groups" value={`${contacts.filter((contact) => contact.type === "group").length}`} />
+        <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+          <StatCard label="Rooms" value={`${filteredContacts.length}`} />
+          <StatCard label="Call ready" value={activeContact ? firstName(activeContact.name) : "Now"} accent />
+          <StatCard label="Groups" value={`${contacts.filter((contact) => contact.type === "group").length}`} />
+        </View>
+
+        <View
+          style={{
+            borderRadius: 24,
+            borderWidth: 1,
+            borderColor: chatPalette.border,
+            backgroundColor: chatPalette.panelSoft,
+            padding: spacing.md,
+            gap: spacing.sm,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}>
+            <Text style={{ color: chatPalette.ink, fontSize: 15, fontWeight: "900" as const }}>New chatroom</Text>
+            <Text style={{ color: chatPalette.soft, fontSize: 11, fontWeight: "800" as const }}>{selectedUserIds.length} selected</Text>
           </View>
 
-          <View
+          <TextInput
+            onChangeText={setGroupTitle}
+            placeholder="Group name"
+            placeholderTextColor={chatPalette.soft}
             style={{
-              borderRadius: 24,
+              minHeight: 42,
+              borderRadius: 18,
               borderWidth: 1,
               borderColor: chatPalette.border,
-              backgroundColor: chatPalette.panelSoft,
-              padding: spacing.md,
-              gap: spacing.sm,
+              backgroundColor: chatPalette.panel,
+              color: chatPalette.ink,
+              paddingHorizontal: spacing.sm,
+              fontSize: 13,
             }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}>
-              <Text style={{ color: chatPalette.ink, fontSize: 15, fontWeight: "900" as const }}>New chatroom</Text>
-              <Text style={{ color: chatPalette.soft, fontSize: 11, fontWeight: "800" as const }}>{selectedUserIds.length} selected</Text>
-            </View>
+            value={groupTitle}
+          />
 
-            <TextInput
-              onChangeText={setGroupTitle}
-              placeholder="Group name"
-              placeholderTextColor={chatPalette.soft}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.sm }}>
+            {chatUsers.slice(0, 8).map((user) => {
+              const active = selectedUserIds.includes(user.id);
+              return (
+                <Pressable
+                  key={user.id}
+                  onPress={() => { // Changed to onPress for immediate chat
+                    onCreateDirectChat(user.id);
+                  }}
+                  style={{
+                    width: 64, // Smaller width
+                    minHeight: 80, // Ensure enough height for content
+                    justifyContent: 'center', // Center content vertically
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: active ? chatPalette.accent : chatPalette.border,
+                    backgroundColor: active ? chatPalette.glow : chatPalette.panel,
+                    padding: spacing.xs,
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <Image source={chatAvatar(user.name)} style={{ width: 32, height: 32, borderRadius: radius.pill }} /> {/* Smaller avatar */}
+                  <Text numberOfLines={1} style={{ color: active ? chatPalette.accent : chatPalette.soft, fontSize: 10, fontWeight: "900" as const }}> {/* Smaller font */}
+                    {firstName(user.name)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            <Pressable
+              disabled={!selectedUserIds[0]}
+              onPress={() => selectedUserIds[0] ? onCreateDirectChat(selectedUserIds[0]) : undefined}
               style={{
-                minHeight: 42,
-                borderRadius: 18,
+                flex: 1,
+                minHeight: 40,
+                borderRadius: radius.pill,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: selectedUserIds[0] ? chatPalette.panel : "rgba(255,255,255,0.04)",
                 borderWidth: 1,
                 borderColor: chatPalette.border,
-                backgroundColor: chatPalette.panel,
-                color: chatPalette.ink,
-                paddingHorizontal: spacing.sm,
-                fontSize: 13,
               }}
-              value={groupTitle}
-            />
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.sm }}>
-              {chatUsers.slice(0, 8).map((user) => {
-                const active = selectedUserIds.includes(user.id);
-                return (
-                  <Pressable
-                    key={user.id}
-                    onPress={() => toggleUser(user.id)}
-                    style={{
-                      width: 76,
-                      borderRadius: 20,
-                      borderWidth: 1,
-                      borderColor: active ? chatPalette.accent : chatPalette.border,
-                      backgroundColor: active ? chatPalette.glow : chatPalette.panel,
-                      padding: spacing.xs,
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <Image source={chatAvatar(user.name)} style={{ width: 38, height: 38, borderRadius: radius.pill }} />
-                    <Text numberOfLines={1} style={{ color: active ? chatPalette.accent : chatPalette.soft, fontSize: 11, fontWeight: "900" as const }}>
-                      {firstName(user.name)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              <Pressable
-                disabled={!selectedUserIds[0]}
-                onPress={() => selectedUserIds[0] ? onCreateDirectChat(selectedUserIds[0]) : undefined}
-                style={{
-                  flex: 1,
-                  minHeight: 40,
-                  borderRadius: radius.pill,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: selectedUserIds[0] ? chatPalette.panel : "rgba(255,255,255,0.04)",
-                  borderWidth: 1,
-                  borderColor: chatPalette.border,
-                }}
-              >
-                <Text style={{ color: selectedUserIds[0] ? chatPalette.ink : chatPalette.soft, fontSize: 12, fontWeight: "900" as const }}>Direct</Text>
-              </Pressable>
-              <Pressable
-                disabled={selectedUserIds.length < 2}
-                onPress={() => {
-                  onCreateGroupChat({ title: groupTitle, participantIds: selectedUserIds });
-                  setSelectedUserIds([]);
-                }}
-                style={{
-                  flex: 1,
-                  minHeight: 40,
-                  borderRadius: radius.pill,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: selectedUserIds.length >= 2 ? chatPalette.accent : "rgba(255,255,255,0.04)",
-                }}
-              >
-                <Text style={{ color: selectedUserIds.length >= 2 ? chatPalette.black : chatPalette.soft, fontSize: 12, fontWeight: "900" as const }}>Group</Text>
-              </Pressable>
-            </View>
+            >
+              <Text style={{ color: selectedUserIds[0] ? chatPalette.ink : chatPalette.soft, fontSize: 12, fontWeight: "900" as const }}>Direct</Text>
+            </Pressable>
+            <Pressable
+              disabled={selectedUserIds.length < 2}
+              onPress={() => {
+                onCreateGroupChat({ title: groupTitle, participantIds: selectedUserIds });
+                setSelectedUserIds([]);
+              }}
+              style={{
+                flex: 1,
+                minHeight: 40,
+                borderRadius: radius.pill,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: selectedUserIds.length >= 2 ? chatPalette.accent : "rgba(255,255,255,0.04)",
+              }}
+            >
+              <Text style={{ color: selectedUserIds.length >= 2 ? chatPalette.black : chatPalette.soft, fontSize: 12, fontWeight: "900" as const }}>Group</Text>
+            </Pressable>
           </View>
         </View>
+      </View>
 
       <View style={{ flexDirection: isWide ? "row" : "column", gap: spacing.md, alignItems: "stretch" }}>
         <View style={{ flex: isWide ? 1.08 : 0, gap: spacing.md }}>

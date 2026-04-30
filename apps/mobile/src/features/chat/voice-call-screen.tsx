@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 
 import { CallActionButton } from "@/src/features/chat/components/call-action-button";
@@ -11,14 +11,29 @@ import { useApp } from "@/src/providers/app-provider";
 import { radius, spacing } from "@/src/theme/tokens";
 
 export function VoiceCallScreen() {
-  const { contactId } = useLocalSearchParams<{ contactId: string }>();
-  const { chatContacts } = useApp();
+  const { callId, contactId } = useLocalSearchParams<{ callId?: string; contactId: string }>();
+  const { activeCall, chatContacts, endCall, joinCall } = useApp();
   const { width } = useWindowDimensions();
 
   const contact = useMemo(
     () => chatContacts.find((item) => item.id === contactId) ?? null,
     [chatContacts, contactId],
   );
+  const currentCallId = Number(callId ?? activeCall?.id ?? 0);
+  const participantCount = activeCall?.participants.length ?? contact?.participantCount ?? 1;
+
+  useEffect(() => {
+    if (currentCallId) {
+      void joinCall(currentCallId);
+    }
+  }, [currentCallId]);
+
+  async function endCurrentCall() {
+    if (currentCallId) {
+      await endCall(currentCallId);
+    }
+    router.back();
+  }
 
   return (
     <>
@@ -47,7 +62,7 @@ export function VoiceCallScreen() {
               </Pressable>
               <Text style={{ color: chatPalette.soft, fontSize: 12, fontWeight: "800" as const }}>Voice call</Text>
               <Pressable
-                onPress={() => router.replace({ pathname: "/conversations/[contactId]/video", params: { contactId: contactId ?? "" } })}
+                onPress={() => router.replace({ pathname: "/conversations/[contactId]/video", params: { callId: callId ?? "", contactId: contactId ?? "" } })}
                 style={callAction}
               >
                 <Ionicons color={chatPalette.ink} name="videocam-outline" size={18} />
@@ -83,7 +98,7 @@ export function VoiceCallScreen() {
                   {contact?.name ?? "Voice call"}
                 </Text>
                 <Text style={{ color: chatPalette.soft, fontSize: 14 }}>
-                  Crystal audio - 02:18
+                  {activeCall?.status ?? "connecting"} - {participantCount} in room
                 </Text>
                 <Text style={{ color: chatPalette.accent, fontSize: 12, fontWeight: "800" as const }}>
                   {presenceLabel(contact?.updatedAt)}
@@ -113,7 +128,7 @@ export function VoiceCallScreen() {
 
           <View style={{ flexDirection: "row", justifyContent: "center", gap: spacing.md, flexWrap: "wrap" }}>
             <CallActionButton icon="mic-off-outline" label="Mute" />
-            <CallActionButton icon="call" label="End" tone="danger" />
+            <CallActionButton icon="call" label="End" onPress={() => void endCurrentCall()} tone="danger" />
             <CallActionButton icon="volume-high-outline" label="Speaker" />
           </View>
         </LinearGradient>

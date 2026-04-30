@@ -71,7 +71,7 @@ export function LiveShowcaseSlider({ label, rooms, onOpenLive }: LiveShowcaseSli
             }}
           >
             <Image
-              source={{ uri: `https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1200&q=80&sig=showcase-${room.id}` }}
+              source={{ uri: room.coverUrl }}
               style={{ width: "100%", aspectRatio: width >= 900 ? 1.64 : 1.02 }}
             />
             <LinearGradient
@@ -95,7 +95,7 @@ export function LiveShowcaseSlider({ label, rooms, onOpenLive }: LiveShowcaseSli
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                 <Ionicons color={showcaseColors.ink} name="play-circle" size={14} />
                 <Text style={{ color: showcaseColors.ink, fontSize: 11, fontWeight: "800" as const }}>
-                  {Math.max(18, Math.floor(room.viewers / 1000))}k
+                  {new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(room.viewers)}
                 </Text>
               </View>
             </View>

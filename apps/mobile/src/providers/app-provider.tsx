@@ -11,9 +11,13 @@ import {
   type LiveIndex,
   type LiveRating,
   type LiveRoom,
+  type CallSession,
+  type MediaUploadResponse,
+  type Notification,
   type PostInput,
   type ProfileResponse,
   addUsersToChatRoom,
+  createCallSession,
   createChatRoom,
   createComment,
   createPost,
@@ -25,13 +29,18 @@ import {
   fetchFeed,
   fetchHealth,
   fetchLiveIndex,
+  fetchNotifications,
   fetchProfile,
   loginAccount,
   logoutAccount,
+  markNotificationsRead,
   rateLiveRoom,
   registerAccount,
   sendChatMessage,
+  updateCallSession,
+  updatePost,
   updateProfile,
+  uploadMedia,
 } from "@/src/services/api";
 
 type ThemeName = "default" | "dark" | "beautiful";
@@ -42,12 +51,14 @@ type AppContextValue = {
   chatMessages: ChatMessage[];
   chatUsers: ChatUser[];
   comments: Comment[];
+  activeCall: CallSession | null;
   displayPosts: DisplayPost[];
   health: HealthResponse | null;
   isBooting: boolean;
   isLoading: boolean;
   liveIndex: LiveIndex | null;
   liveRooms: LiveRoom[];
+  notifications: Notification[];
   profile: ProfileResponse | null;
   selectedLiveId: number | null;
   selectedLiveRoom: LiveRoom | null;
@@ -65,11 +76,17 @@ type AppContextValue = {
   closeLive: () => void;
   setTheme: (theme: ThemeName) => void;
   createStudioPost: (input: PostInput) => Promise<FeedPost>;
+  updateStudioPost: (id: number, input: PostInput) => Promise<FeedPost>;
+  uploadStudioMedia: (input: { uri: string; name: string; type: string }) => Promise<MediaUploadResponse>;
+  startCall: (input: { roomId: string; mode: "voice" | "video" }) => Promise<CallSession>;
+  joinCall: (id: number) => Promise<CallSession>;
+  endCall: (id: number) => Promise<CallSession>;
+  markAllNotificationsRead: () => Promise<void>;
   addPostComment: (postId: number, body: string) => Promise<void>;
   addLiveComment: (liveId: number, body: string) => Promise<void>;
   loadPostComments: (postId: number) => Promise<void>;
   loadLiveComments: (liveId: number) => Promise<void>;
-  saveProfile: (input: { name: string; bio: string; headline: string; location: string }) => Promise<void>;
+  saveProfile: (input: { name: string; bio: string; headline: string; location: string; avatarUrl?: string; coverUrl?: string; websiteUrl?: string }) => Promise<void>;
   rateLive: (liveRoomId: number, score: number) => Promise<void>;
 };
 
@@ -85,6 +102,7 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [activeChatId, setActiveChatId] = useState("");
+  const [activeCall, setActiveCall] = useState<CallSession | null>(null);
   const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatUsers, setChatUsers] = useState<ChatUser[]>([]);
@@ -94,6 +112,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [liveIndex, setLiveIndex] = useState<LiveIndex | null>(null);
   const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [selectedLiveId, setSelectedLiveId] = useState<number | null>(null);
@@ -106,15 +125,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const displayPosts = useMemo(() => {
-    const mapped = posts.map<DisplayPost>((post, index) => ({
+    const mapped = posts.map<DisplayPost>((post) => ({
       ...post,
-      comments: 348 - index * 27,
-      gallery: [post.mediaUrl || postImageFor(post.id), postImageFor(post.id + 1), postImageFor(post.id + 2), postImageFor(post.id + 3)],
-      likes: 1125 - index * 109,
-      promotionScore: Math.max(42, Math.min(99, 96 - index * 5 + (post.id % 6))),
-      tags: [post.mood.toLowerCase().replace(/\s+/g, ""), "creator"],
+      comments: post.commentCount,
+      gallery: post.gallery.length ? post.gallery : post.mediaUrl ? [post.mediaUrl] : [],
+      likes: post.likeCount,
+      promotionScore: post.promotionScore,
+      tags: post.tags.length ? post.tags : [post.mood.toLowerCase().replace(/\s+/g, ""), post.mediaType].filter(Boolean),
     }));
-    return mapped.sort((left, right) => right.promotionScore - left.promotionScore);
+    return mapped.sort((left, right) => right.promotionScore - left.promotionScore || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
   }, [posts]);
 
   async function loadSession() {
@@ -131,13 +150,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     setIsLoading(true);
     try {
-      const [nextFeed, nextHealth, nextLive, nextProfile, nextContacts, nextChatUsers] = await Promise.all([
+      const [nextFeed, nextHealth, nextLive, nextProfile, nextContacts, nextChatUsers, nextNotifications] = await Promise.all([
         fetchFeed(),
         fetchHealth().catch(() => null),
         fetchLiveIndex(),
         fetchProfile(),
         fetchChatContacts(),
         fetchChatUsers(),
+        fetchNotifications(),
       ]);
       setLiveRooms(nextFeed.liveRooms);
       setPosts(nextFeed.posts);
@@ -146,6 +166,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setProfile(nextProfile);
       setChatContacts(nextContacts);
       setChatUsers(nextChatUsers);
+      setNotifications(nextNotifications);
       if (!selectedLiveId && nextFeed.liveRooms[0]) {
         setSelectedLiveId(null);
       }
@@ -189,8 +210,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setChatMessages([]);
     setChatUsers([]);
     setComments([]);
+    setActiveCall(null);
     setLiveIndex(null);
     setLiveRooms([]);
+    setNotifications([]);
     setPosts([]);
     setProfile(null);
   }
@@ -258,11 +281,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function createStudioPost(input: PostInput) {
     const post = await createPost(input);
     setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+    setNotifications(await fetchNotifications());
     return post;
   }
 
-  async function saveProfile(input: { name: string; bio: string; headline: string; location: string }) {
-    setProfile(await updateProfile(input));
+  async function updateStudioPost(id: number, input: PostInput) {
+    const post = await updatePost(id, input);
+    setPosts((current) => current.map((item) => (item.id === post.id ? post : item)));
+    setNotifications(await fetchNotifications());
+    return post;
+  }
+
+  async function uploadStudioMedia(input: { uri: string; name: string; type: string }) {
+    return uploadMedia(input);
+  }
+
+  async function startCall(input: { roomId: string; mode: "voice" | "video" }) {
+    const call = await createCallSession(input);
+    setActiveCall(call);
+    setNotifications(await fetchNotifications());
+    return call;
+  }
+
+  async function joinCall(id: number) {
+    const call = await updateCallSession({ id, action: "join" });
+    setActiveCall(call);
+    return call;
+  }
+
+  async function endCall(id: number) {
+    const call = await updateCallSession({ id, action: "end" });
+    setActiveCall(call);
+    return call;
+  }
+
+  async function markAllNotificationsRead() {
+    await markNotificationsRead();
+    setNotifications(await fetchNotifications());
+  }
+
+  async function saveProfile(input: { name: string; bio: string; headline: string; location: string; avatarUrl?: string; coverUrl?: string; websiteUrl?: string }) {
+    const nextProfile = await updateProfile(input);
+    setProfile(nextProfile);
+    setSession(nextProfile.user);
+    setPosts((current) => current.map((post) => (post.author.id === nextProfile.user.id ? { ...post, author: nextProfile.user } : post)));
   }
 
   async function rateLive(liveRoomId: number, score: number) {
@@ -280,6 +342,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider
       value={{
         activeChatId,
+        activeCall,
         addUsersToActiveChat,
         addLiveComment,
         addPostComment,
@@ -292,14 +355,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         createGroupChat,
         createStudioPost,
         displayPosts,
+        endCall,
         health,
         isBooting,
         isLoading,
         liveIndex,
         liveRooms,
+        notifications,
+        joinCall,
         loadLiveComments,
         loadPostComments,
         loadThread,
+        markAllNotificationsRead,
         openLive,
         profile,
         rateLive,
@@ -312,7 +379,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signOut,
         signUp,
+        startCall,
         theme,
+        updateStudioPost,
+        uploadStudioMedia,
       }}
     >
       {children}
@@ -326,15 +396,4 @@ export function useApp() {
     throw new Error("useApp must be used inside AppProvider");
   }
   return context;
-}
-
-function postImageFor(seed: number) {
-  const images = [
-    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1000&q=82",
-    "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1000&q=82",
-  ];
-  return images[Math.abs(seed) % images.length];
 }
