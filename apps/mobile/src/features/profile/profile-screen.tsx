@@ -65,7 +65,7 @@ export function ProfileScreen() {
       contentInsetAdjustmentBehavior="automatic"
       style={{ flex: 1, backgroundColor: profileColors.bg }}
     >
-      <LinearGradient colors={["#fff0ec", "#fff8f4", "#fff9f6"]} style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.lg }}>
+      <LinearGradient colors={["#fff0ec", "#fff8f4", "#fff9f6"]} style={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.md }}>
         {cover ? (
           <Image
             contentFit="cover"
@@ -81,7 +81,7 @@ export function ProfileScreen() {
           </View>
         </View>
 
-        <View style={{ marginTop: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+        <View style={{ marginTop: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <View style={{ width: 72, height: 72, borderRadius: radius.pill, padding: 3, backgroundColor: "#fff", boxShadow: "0 12px 34px rgba(255, 118, 93, 0.22)" }}>
             {avatar ? (
               <Image source={{ uri: avatar }} style={{ width: "100%", height: "100%", borderRadius: radius.pill }} />
@@ -107,19 +107,19 @@ export function ProfileScreen() {
           <Ionicons color={profileColors.muted} name="chevron-forward" size={18} />
         </View>
 
-        <Text numberOfLines={2} style={{ color: profileColors.muted, fontSize: 13, lineHeight: 19, marginTop: spacing.md }}>
+        <Text numberOfLines={2} style={{ color: profileColors.muted, fontSize: 13, lineHeight: 19, marginTop: spacing.sm }}>
           {profile?.bio || profile?.headline || "Creator stories, live drops, and studio updates."}
         </Text>
 
-        <View style={{ marginTop: spacing.lg, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.78)", borderWidth: 1, borderColor: profileColors.line, flexDirection: "row" }}>
+        <View style={{ marginTop: spacing.md, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.78)", borderWidth: 1, borderColor: profileColors.line, flexDirection: "row" }}>
           <ProfileStat value={compact(profilePosts.length)} label="Posts" />
           <ProfileStat value={compact(Math.max(10, totalReactions + 10))} label="Fans" />
           <ProfileStat value={compact(Math.max(50, displayPosts.length * 12))} label="Collect" />
         </View>
       </LinearGradient>
 
-      <View style={{ paddingHorizontal: spacing.lg, gap: spacing.md }}>
-        <LinearGradient colors={["#181b31", "#101827"]} style={{ borderRadius: 12, padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+      <View style={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
+        <LinearGradient colors={["#181b31", "#101827"]} style={{ borderRadius: 12, padding: spacing.sm, flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.12)" }}>
             <Ionicons color="#ff6bd6" name="diamond" size={22} />
           </View>
@@ -127,24 +127,24 @@ export function ProfileScreen() {
             <Text style={{ color: "#fff", fontSize: 14, fontWeight: "900" as const }}>Join as a member</Text>
             <Text style={{ color: "rgba(255,255,255,0.58)", fontSize: 11, marginTop: 2 }}>Member-only edits and post boosts</Text>
           </View>
-          <Pressable onPress={() => openTool("vip")} style={{ borderRadius: radius.pill, backgroundColor: "#fff", paddingHorizontal: spacing.md, paddingVertical: 9 }}>
+          <Pressable onPress={() => openTool("vip")} style={{ borderRadius: radius.pill, backgroundColor: "#fff", paddingHorizontal: spacing.sm, paddingVertical: 8 }}>
             <Text style={{ color: "#111827", fontSize: 11, fontWeight: "900" as const }}>Open now</Text>
           </Pressable>
         </LinearGradient>
 
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+        <View style={{ flexDirection: "row", gap: spacing.xs }}>
           <QuickCard title="Edit" body="Profile" icon="create-outline" onPress={() => router.push("/settings")} />
           <QuickCard title="Share" body="Profile" icon="share-social-outline" onPress={() => void shareProfile()} />
           <QuickCard title="New" body="Post" icon="add-circle-outline" onPress={() => router.push("/(tabs)/studio")} />
         </View>
 
         <SectionTitle title="My Account" />
-        <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: spacing.lg }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: spacing.sm }}>
           {accountItems.map((item) => (
             <Pressable
               key={item.id}
               onPress={() => openTool(item.id)}
-              style={{ width: "25%", minHeight: 72, alignItems: "center", justifyContent: "flex-start", gap: spacing.xs, paddingHorizontal: 4 }}
+              style={{ width: "25%", minHeight: 64, alignItems: "center", justifyContent: "flex-start", gap: 6, paddingHorizontal: 2 }}
             >
               <View style={{ width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#fff", borderWidth: 1, borderColor: profileColors.line }}>
                 <Ionicons color={item.tint} name={item.icon} size={20} />
@@ -179,7 +179,7 @@ export function ProfileScreen() {
         ) : (
           <Pressable
             onPress={() => router.push("/(tabs)/studio")}
-            style={{ minHeight: 132, borderRadius: 24, alignItems: "center", justifyContent: "center", gap: spacing.xs, backgroundColor: "#fff", borderWidth: 1, borderColor: profileColors.line, padding: spacing.lg }}
+            style={{ minHeight: 118, borderRadius: 20, alignItems: "center", justifyContent: "center", gap: spacing.xs, backgroundColor: "#fff", borderWidth: 1, borderColor: profileColors.line, padding: spacing.md }}
           >
             <Ionicons color={profileColors.peach} name="images-outline" size={28} />
             <Text style={{ color: profileColors.ink, fontSize: 16, fontWeight: "900" as const }}>Create your first feed post</Text>
@@ -213,7 +213,7 @@ function TinyBadge({ color, label }: { color: string; label: string }) {
 
 function ProfileStat({ label, value }: { label: string; value: string }) {
   return (
-    <View style={{ flex: 1, alignItems: "center", paddingVertical: spacing.md }}>
+    <View style={{ flex: 1, alignItems: "center", paddingVertical: spacing.sm }}>
       <Text style={{ color: profileColors.ink, fontSize: 17, fontWeight: "900" as const, fontVariant: ["tabular-nums"] }}>
         {value}
       </Text>
@@ -224,7 +224,7 @@ function ProfileStat({ label, value }: { label: string; value: string }) {
 
 function QuickCard({ body, icon, onPress, title }: { body: string; icon: IconName; onPress: () => void; title: string }) {
   return (
-    <Pressable onPress={onPress} style={{ flex: 1, minHeight: 72, borderRadius: 14, backgroundColor: "#fff", borderWidth: 1, borderColor: profileColors.line, padding: spacing.sm, gap: spacing.xs }}>
+    <Pressable onPress={onPress} style={{ flex: 1, minHeight: 62, borderRadius: 14, backgroundColor: "#fff", borderWidth: 1, borderColor: profileColors.line, padding: spacing.sm, gap: 4 }}>
       <Ionicons color={profileColors.peach} name={icon} size={18} />
       <Text style={{ color: profileColors.ink, fontSize: 12, fontWeight: "900" as const }}>{title}</Text>
       <Text style={{ color: profileColors.muted, fontSize: 10, fontWeight: "700" as const }}>{body}</Text>
