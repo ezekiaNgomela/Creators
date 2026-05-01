@@ -748,6 +748,28 @@ func (h *Handler) HandleChatMessages(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, publicError(err))
 			return
 		}
+		participants, err := h.Service.ListChatParticipants(r.Context(), message.RoomID)
+		if err == nil {
+			for _, participant := range participants {
+				delivery := message
+				delivery.Own = participant.ID == message.Sender.ID
+				h.publishRealtime(r.Context(), participant.ID, "chat_message", delivery)
+				if participant.ID == userID {
+					continue
+				}
+				notification, notifyErr := h.Service.CreateNotification(
+					r.Context(),
+					participant.ID,
+					"New chat message",
+					chatNotificationBody(message),
+					"chat",
+					"/conversations/"+message.RoomID,
+				)
+				if notifyErr == nil {
+					h.publishRealtime(r.Context(), participant.ID, "notification", notification)
+				}
+			}
+		}
 		writeJSON(w, http.StatusCreated, map[string]ChatMessage{"message": message})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -861,4 +883,15 @@ func (h *Handler) publishRealtime(ctx context.Context, userID int64, eventType s
 		return
 	}
 	_ = h.Redis.Publish(ctx, realtimeUserChannel(userID), message).Err()
+}
+
+func chatNotificationBody(message ChatMessage) string {
+	body := strings.TrimSpace(message.Body)
+	if len(body) > 80 {
+		body = body[:77] + "..."
+	}
+	if body == "" {
+		body = "Sent a message."
+	}
+	return message.Sender.Name + ": " + body
 }

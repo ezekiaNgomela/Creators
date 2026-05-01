@@ -25,6 +25,10 @@ type realtimeClientMessage struct {
 }
 
 func (h *Handler) HandleRealtime(w http.ResponseWriter, r *http.Request) {
+	if h.Redis == nil {
+		writeError(w, http.StatusServiceUnavailable, "realtime is unavailable")
+		return
+	}
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		writeError(w, http.StatusUnauthorized, "token is required")
@@ -41,6 +45,7 @@ func (h *Handler) HandleRealtime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer connection.Close()
+	connection.SetReadLimit(8192)
 	var writeMu sync.Mutex
 	writeJSON := func(payload any) error {
 		writeMu.Lock()

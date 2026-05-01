@@ -5,6 +5,7 @@ import { clearToken, getToken, setToken } from "@/src/services/storage";
 const manifestUrl = Constants.expoConfig?.hostUri?.split(":")[0];
 const defaultBaseUrl = manifestUrl ? `http://${manifestUrl}:18000/api` : "http://localhost:18000/api";
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL ?? defaultBaseUrl).replace(/\/$/, "");
+const REALTIME_BASE_URL = API_BASE_URL.replace(/^http/i, (value) => (value.toLowerCase() === "https" ? "wss" : "ws"));
 
 export type HealthResponse = {
   service: string;
@@ -180,6 +181,14 @@ export type ChatMessage = {
   createdAt: string;
   own: boolean;
 };
+
+export type RealtimeEvent =
+  | { type: "connected"; data: { userId: number; channels: string[] } }
+  | { type: "notification"; data: Notification }
+  | { type: "chat_message"; data: ChatMessage }
+  | { type: "call_signal"; callId?: number; fromId?: number; data: unknown }
+  | { type: "pong"; data: string }
+  | { type: string; data?: unknown };
 
 export type ChatUser = {
   id: number;
@@ -377,4 +386,16 @@ export async function sendChatMessage(input: { contactId: string; body: string }
     body: JSON.stringify({ roomId: input.contactId, body: input.body }),
   });
   return response.message;
+}
+
+export async function createRealtimeSocket(input?: { callId?: number }) {
+  const token = await getToken();
+  if (!token) {
+    return null;
+  }
+  const params = new URLSearchParams({ token });
+  if (input?.callId) {
+    params.set("callId", String(input.callId));
+  }
+  return new WebSocket(`${REALTIME_BASE_URL}/realtime?${params.toString()}`);
 }

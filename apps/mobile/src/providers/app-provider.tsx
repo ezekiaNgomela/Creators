@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   type AuthUser,
@@ -16,11 +16,13 @@ import {
   type Notification,
   type PostInput,
   type ProfileResponse,
+  type RealtimeEvent,
   addUsersToChatRoom,
   createCallSession,
   createChatRoom,
   createComment,
   createPost,
+  createRealtimeSocket,
   fetchChatContacts,
   fetchChatMessages,
   fetchChatUsers,
@@ -118,6 +120,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [selectedLiveId, setSelectedLiveId] = useState<number | null>(null);
   const [session, setSession] = useState<AuthUser | null>(null);
   const [theme, setTheme] = useState<ThemeName>("default");
+  const activeChatIdRef = useRef(activeChatId);
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   const selectedLiveRoom = useMemo(
     () => liveRooms.find((room) => room.id === selectedLiveId) ?? null,
@@ -191,6 +198,78 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       void loadThread(chatContacts[0].id);
     }
   }, [chatContacts.length]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    let closed = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    async function connect() {
+      socket = await createRealtimeSocket();
+      if (!socket || closed) {
+        return;
+      }
+
+      socket.onmessage = (event) => {
+        let payload: RealtimeEvent;
+        try {
+          payload = JSON.parse(String(event.data)) as RealtimeEvent;
+        } catch {
+          return;
+        }
+
+        if (payload.type === "chat_message") {
+          const message = payload.data as ChatMessage;
+          setChatMessages((current) => {
+            if (message.roomId !== activeChatIdRef.current || current.some((item) => item.id === message.id)) {
+              return current;
+            }
+            return [...current, message];
+          });
+          void fetchChatContacts().then(setChatContacts).catch(() => undefined);
+          return;
+        }
+
+        if (payload.type === "notification") {
+          const notification = payload.data as Notification;
+          setNotifications((current) => {
+            if (current.some((item) => item.id === notification.id)) {
+              return current;
+            }
+            return [notification, ...current];
+          });
+        }
+      };
+
+      socket.onopen = () => {
+        socket?.send(JSON.stringify({ type: "ping" }));
+      };
+
+      socket.onclose = () => {
+        if (!closed) {
+          reconnectTimer = setTimeout(() => void connect(), 2500);
+        }
+      };
+
+      socket.onerror = () => {
+        socket?.close();
+      };
+    }
+
+    void connect();
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+      socket?.close();
+    };
+  }, [session?.id]);
 
   async function signIn(input: { email: string; password: string }) {
     const response = await loginAccount(input);
