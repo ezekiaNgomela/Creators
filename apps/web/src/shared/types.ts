@@ -2,9 +2,9 @@ import type { FeedPost } from "../api";
 
 export type AuthMode = "login" | "register";
 export type HomeTab = "home" | "streams" | "messages" | "studio" | "profiles";
-export type ProfileView = "profile" | "settings";
+export type ProfileView = "profile" | "settings" | "service";
 export type ThemeName = "default" | "dark" | "beautiful" | "blueish" | "greenish" | "whiteish";
-export type StudioTool = "media" | "adjust" | "text" | "layers" | "timeline" | "publish";
+export type StudioTool = "media" | "audio" | "text" | "elements" | "transitions" | "effects" | "filters" | "adjust" | "speed" | "templates";
 export type FeedMode = "Local" | "Global" | "Trend";
 
 export type DisplayPost = FeedPost & {

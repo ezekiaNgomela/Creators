@@ -1,7 +1,14 @@
-import { useState } from "react";
-import { Collapse, Paper } from "@mui/material";
-import { createPost, type Comment } from "../../api";
-import { EmojiComposer, EmojiText, FollowPill } from "../../components/engagement";
+import { type CSSProperties, type FormEvent, useMemo, useState } from "react";
+import AddRounded from "@mui/icons-material/AddRounded";
+import ChatBubbleOutlineRounded from "@mui/icons-material/ChatBubbleOutlineRounded";
+import CloseRounded from "@mui/icons-material/CloseRounded";
+import FavoriteBorderRounded from "@mui/icons-material/FavoriteBorderRounded";
+import FavoriteRounded from "@mui/icons-material/FavoriteRounded";
+import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
+import RocketLaunchRounded from "@mui/icons-material/RocketLaunchRounded";
+import SendRounded from "@mui/icons-material/SendRounded";
+import { type Comment } from "../../api";
+import { EmojiText } from "../../components/engagement";
 import { profileImageFor, timeAgo, webFilterFor } from "../../shared/helpers";
 import type { DisplayPost } from "../../shared/types";
 
@@ -55,64 +62,68 @@ export function FeedCard({
   post: DisplayPost;
 }) {
   const [promoted, setPromoted] = useState(false);
-  const [promoteCount, setPromoteCount] = useState(post.likes);
-  const [open, setOpen] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
-  const [shareStatus, setShareStatus] = useState("");
+  const [promotionCount, setPromotionCount] = useState(post.promotionScore);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(post.likes);
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [tagComposerOpen, setTagComposerOpen] = useState(false);
+  const [tagInput, setTagInput] = useState("");
+  const [savedTags, setSavedTags] = useState<string[]>(() => loadSavedTags(post.id));
   const imageFilter = webFilterFor(post.filterName);
   const primaryMedia = post.gallery[0] ?? post.mediaUrl;
+  const mediaRatio = ratioForPost(post.aspectRatio);
+  const visibleTags = useMemo(() => uniqueTags([...post.tags, ...savedTags]).slice(0, 6), [post.tags, savedTags]);
+  const commentCount = Math.max(post.comments, comments.length);
 
   function promotePost() {
     setPromoted((current) => {
-      setPromoteCount((count) => count + (current ? -1 : 1));
+      setPromotionCount((count) => count + (current ? -1 : 1));
       return !current;
     });
   }
 
-  async function shareToProfile() {
-    setShareStatus("Sharing...");
-    try {
-      await createPost({
-        body: `Sharing ${post.author.name}'s post: ${post.body}`,
-        mood: post.mood,
-        mediaUrl: post.mediaUrl || primaryMedia,
-        filterName: post.filterName,
-        overlayText: post.overlayText,
-        sticker: post.sticker,
-        textColor: post.textColor,
-        backgroundTone: post.backgroundTone,
-        aspectRatio: post.aspectRatio,
-      });
-      setShareStatus("Shared to your profile.");
-    } catch (err) {
-      setShareStatus(err instanceof Error ? err.message : "Could not share to profile.");
-    }
+  function likePost() {
+    setLiked((current) => {
+      setLikeCount((count) => count + (current ? -1 : 1));
+      return !current;
+    });
   }
 
-  async function shareOutsideApp() {
-    const shareUrl = `${window.location.origin}/?post=${post.id}`;
-    const shareText = `${post.author.name} on Creators: ${post.body}`;
+  function openComments() {
+    setCommentOpen(true);
+    void onLoadComments(post.id);
+  }
 
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: `${post.author.name} on Creators`,
-          text: shareText,
-          url: shareUrl,
-        });
-        setShareStatus("Share sheet opened.");
-        return;
-      }
-      await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
-      setShareStatus("Link copied for external sharing.");
-    } catch (err) {
-      setShareStatus(err instanceof Error ? err.message : "External share was cancelled.");
+  async function submitComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = commentDraft.trim();
+    if (!value) {
+      return;
     }
+    await onAddComment(post.id, value);
+    setCommentDraft("");
+    setCommentOpen(true);
+  }
+
+  function saveHashtag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const tag = normalizeTag(tagInput);
+    if (!tag) {
+      return;
+    }
+    setSavedTags((current) => {
+      const next = uniqueTags([...current, tag]);
+      savePostTags(post.id, next);
+      return next;
+    });
+    setTagInput("");
+    setTagComposerOpen(false);
   }
 
   return (
-    <article className="feed-card">
-      <div className="photo-grid">
+    <article className="feed-card post-card" style={{ "--post-ratio": mediaRatio } as CSSProperties}>
+      <div className="photo-grid post-media-frame">
         {!primaryMedia ? (
           <div className="photo-grid-main media-placeholder">Media will appear here after upload.</div>
         ) : post.mediaType === "video" ? (
@@ -148,94 +159,135 @@ export function FeedCard({
           </div>
         ))}
 
-        {post.overlayText || post.sticker ? (
-          <div className={`feed-creative-layer tone-${post.backgroundTone || "midnight"}`}>
-            {post.sticker ? <span className="feed-sticker">{post.sticker}</span> : null}
-            {post.overlayText ? <strong style={{ color: post.textColor || "#ffffff" }}>{post.overlayText}</strong> : null}
+        <div className="feed-image-shade" />
+        <header className="post-top-header">
+          <button className="post-option-button" type="button" aria-label="Post options">
+            <MoreHorizRounded fontSize="small" />
+          </button>
+        </header>
+        {post.gallery.length > 1 ? (
+          <div className="post-media-dots" aria-label={`${post.gallery.length} media items`}>
+            {post.gallery.slice(0, 4).map((item, index) => (
+              <i className={index === 0 ? "active" : ""} key={item} />
+            ))}
           </div>
         ) : null}
 
-        <div className="feed-image-shade" />
-        <header className="feed-card-header">
-          <button className="feed-profile-trigger" type="button" onClick={() => onOpenProfile(post)} aria-label={`Open ${post.author.name} profile`}>
+        {commentOpen ? (
+          <div className="post-comment-overlay" role="dialog" aria-label="Comments">
+            <div className="post-comment-sheet">
+              <div className="post-comment-head">
+                <span>Comments</span>
+                <button type="button" onClick={() => setCommentOpen(false)} aria-label="Close comments">
+                  <CloseRounded fontSize="small" />
+                </button>
+              </div>
+              <div className="post-comment-list">
+                {comments.length ? comments.map((comment) => (
+                  <div className="post-comment-bubble" key={comment.id}>
+                    <img alt="" src={profileImageFor(comment.author.name)} />
+                    <p>
+                      <strong>{comment.author.name}</strong>
+                      <EmojiText text={comment.body} />
+                    </p>
+                  </div>
+                )) : <p className="post-comment-empty">No comments yet. Start the reply.</p>}
+              </div>
+              <form className="post-comment-form" onSubmit={(event) => void submitComment(event)}>
+                <input value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} placeholder="Reply to this post" aria-label="Reply to this post" />
+                <button type="submit" aria-label="Send comment">
+                  <SendRounded fontSize="small" />
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <section className="post-caption-layer" aria-label="Post caption">
+        <div className="post-author-row">
+          <button className="post-author-mini" type="button" onClick={() => onOpenProfile(post)} aria-label={`Open ${post.author.name} profile`}>
             <img alt="" src={profileImageFor(post.author.name)} />
             <span>
               <strong>{post.author.name}</strong>
               <small>{timeAgo(post.createdAt)}</small>
             </span>
           </button>
-          <FollowPill following={isFollowing} onClick={() => onToggleFollow(post.author.name)} />
-        </header>
-
-        <div className="feed-overlay-copy">
-          <div className="tag-row">
-            {post.tags.map((tag) => (
-              <span key={tag}>#{tag}</span>
-            ))}
-          </div>
-          <p className="feed-copy">{post.body}</p>
+          <button className={isFollowing ? "post-author-follow active" : "post-author-follow"} type="button" onClick={() => onToggleFollow(post.author.name)}>
+            {isFollowing ? "Following" : "Follow"}
+          </button>
         </div>
-
-        <footer className="feed-actions">
-          <button className={promoted ? "promote active" : "promote"} type="button" aria-label="Promote post" aria-pressed={promoted} onClick={promotePost}>
-            <span className="action-icon trend" aria-hidden="true" />
+        <p className="feed-copy">{post.body}</p>
+        <div className="post-hashtag-row">
+          {visibleTags.map((tag) => (
+            <span key={tag}>#{tag}</span>
+          ))}
+          <button className="post-hashtag-add" type="button" onClick={() => setTagComposerOpen((value) => !value)} aria-label="Add hashtag">
+            <AddRounded fontSize="inherit" />
           </button>
-          <span>{promoteCount}</span>
-          <button className="share-action" type="button" aria-label="Share post" onClick={() => setShareOpen((value) => !value)}>
-            <span className="action-icon share" aria-hidden="true" />
-          </button>
-          <span>{Math.max(0, Math.round(post.likes / 4))}</span>
-          <button className="comment" type="button" aria-label="Open comments" onClick={() => { setOpen((value) => !value); void onLoadComments(post.id); }}>
-            <span className="action-icon chat" aria-hidden="true" />
-          </button>
-          <span>{post.comments + comments.length}</span>
-          <div className="reader-stack">
-            <img alt="" src={profileImageFor(`${post.author.name}-1`)} />
-            <img alt="" src={profileImageFor(`${post.author.name}-2`)} />
-            <img alt="" src={profileImageFor(`${post.author.name}-3`)} />
-          </div>
-        </footer>
-      </div>
+        </div>
+        {tagComposerOpen ? (
+          <form className="post-hashtag-form" onSubmit={saveHashtag}>
+            <input value={tagInput} onChange={(event) => setTagInput(event.target.value)} placeholder="Add hashtag" aria-label="Add hashtag" />
+            <button type="submit">Save</button>
+          </form>
+        ) : null}
+      </section>
 
-      {shareOpen ? (
-        <section className="share-panel" aria-label="Share post">
-          <button type="button" onClick={() => void shareToProfile()}>Share to my profile</button>
-          <button type="button" onClick={() => void shareOutsideApp()}>Share outside app</button>
-          <button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/?post=${post.id}`).then(() => setShareStatus("Post link copied."))}>Copy link</button>
-          {shareStatus ? <p>{shareStatus}</p> : null}
-        </section>
-      ) : null}
-
-      {open ? (
-        <Collapse in={open}>
-          <section className="comment-panel">
-            <div className="flex flex-col gap-3">
-              {comments.length ? comments.map((comment) => (
-                <Paper
-                  elevation={0}
-                  key={comment.id}
-                  sx={{
-                    p: 1.25,
-                    borderRadius: "16px",
-                    background: "color-mix(in srgb, var(--surface-2) 58%, transparent)",
-                    border: "1px solid var(--line-soft)",
-                  }}
-                >
-                  <p className="m-0 text-sm font-semibold text-[color:var(--text-1)]">{comment.author.name}</p>
-                  <EmojiText className="mt-1 block text-sm text-[color:var(--text-2)]" text={comment.body} />
-                </Paper>
-              )) : <p className="text-sm text-[color:var(--text-3)]">No comments yet. Start the conversation.</p>}
-            </div>
-            <EmojiComposer
-              placeholder="Drop a thought with emoji"
-              onSubmit={async (value) => {
-                await onAddComment(post.id, value);
-                setOpen(true);
-              }}
-            />
-          </section>
-        </Collapse>
-      ) : null}
+      <footer className="post-social-bar">
+        <button className={liked ? "post-action like active" : "post-action like"} type="button" aria-label="Like post" aria-pressed={liked} onClick={likePost}>
+          {liked ? <FavoriteRounded fontSize="small" /> : <FavoriteBorderRounded fontSize="small" />}
+          <span>{likeCount}</span>
+        </button>
+        <button className="post-action comment" type="button" aria-label="Open comments" onClick={openComments}>
+          <ChatBubbleOutlineRounded fontSize="small" />
+          <span>{commentCount}</span>
+        </button>
+        <button className={promoted ? "post-action promote active" : "post-action promote"} type="button" aria-label="Promote post" aria-pressed={promoted} onClick={promotePost}>
+          <RocketLaunchRounded fontSize="small" />
+          <span>{promotionCount}</span>
+        </button>
+      </footer>
     </article>
   );
+}
+
+const tagStoragePrefix = "creators.postTags.";
+
+function ratioForPost(value: string) {
+  switch (value) {
+    case "1:1":
+      return "1 / 1";
+    case "9:16":
+      return "9 / 16";
+    case "16:9":
+      return "16 / 9";
+    case "4:5":
+    default:
+      return "4 / 5";
+  }
+}
+
+function normalizeTag(value: string) {
+  return value.trim().replace(/^#+/, "").replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
+}
+
+function uniqueTags(values: string[]) {
+  return Array.from(new Set(values.map(normalizeTag).filter(Boolean)));
+}
+
+function loadSavedTags(postId: number) {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(`${tagStoragePrefix}${postId}`) || "[]");
+    return Array.isArray(parsed) ? uniqueTags(parsed.filter((value): value is string => typeof value === "string")) : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePostTags(postId: number, tags: string[]) {
+  window.localStorage.setItem(`${tagStoragePrefix}${postId}`, JSON.stringify(uniqueTags(tags)));
 }

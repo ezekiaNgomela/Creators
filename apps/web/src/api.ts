@@ -292,6 +292,15 @@ export async function createPost(input: PostInput): Promise<FeedPost> {
   return response.post;
 }
 
+export async function fetchPost(id: number): Promise<FeedPost> {
+  const response = await apiRequest<{ post?: FeedPost; posts?: FeedPost[] }>(`/posts?id=${id}`);
+  const post = response.post ?? response.posts?.find((item) => item.id === id);
+  if (!post) {
+    throw new Error("Post not found");
+  }
+  return post;
+}
+
 export async function updatePost(id: number, input: PostInput): Promise<FeedPost> {
   const response = await apiRequest<{ post: FeedPost }>("/posts", {
     method: "PATCH",

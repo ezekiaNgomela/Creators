@@ -265,6 +265,21 @@ func (h *Handler) HandlePosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodGet {
+		if idValue := strings.TrimSpace(r.URL.Query().Get("id")); idValue != "" {
+			postID, err := strconv.ParseInt(idValue, 10, 64)
+			if err != nil || postID <= 0 {
+				writeError(w, http.StatusBadRequest, "invalid post id")
+				return
+			}
+			post, err := h.Service.FindPost(r.Context(), postID)
+			if err != nil {
+				writeError(w, http.StatusNotFound, "post not found")
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]FeedPost{"post": post})
+			return
+		}
+
 		posts, err := h.Service.ListPosts(r.Context())
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "could not load posts")

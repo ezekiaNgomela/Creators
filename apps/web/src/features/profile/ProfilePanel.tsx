@@ -2,27 +2,21 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   BadgeCheck,
-  Bell,
   Crown,
   Edit3,
   ExternalLink,
   Grid3X3,
   LogOut,
-  Palette,
-  Radio,
   Settings,
   Share2,
-  ShoppingBag,
   Sparkles,
-  Store,
   UserCog,
-  Video,
-  WalletCards,
 } from "lucide-react";
 import type { AuthUser, ChatUser, HealthResponse, ProfileResponse } from "../../api";
 import { EmojiText } from "../../components/engagement";
 import { compactNumber, firstName } from "../../shared/helpers";
 import type { DisplayPost } from "../../shared/types";
+import { ProfileServiceGrid, type ProfileServiceId } from "./services";
 import { UserListModal } from "./UserListModal";
 
 type ProfileTab = "posts" | "liked" | "groups";
@@ -42,6 +36,7 @@ export function ProfilePanel({
   onLogout,
   onOpenSettings,
   onOpenPost,
+  onOpenService,
   onStartCreating,
   posts,
   profile,
@@ -55,6 +50,7 @@ export function ProfilePanel({
   onLogout: () => void;
   onOpenSettings: () => void;
   onOpenPost: (post: DisplayPost) => void;
+  onOpenService: (serviceId: ProfileServiceId) => void;
   onStartCreating: () => void;
   posts: DisplayPost[];
   profile: ProfileResponse | null;
@@ -122,10 +118,8 @@ export function ProfilePanel({
           <button type="button" onClick={onStartCreating}>Open now</button>
         </section>
 
-        <ProfileToolGrid
-          onCopyProfileLink={() => void copyProfileLink()}
-          onOpenSettings={onOpenSettings}
-          onStartCreating={onStartCreating}
+        <ProfileServiceGrid
+          onOpenService={onOpenService}
         />
 
         <section className="web-profile-content">
@@ -257,40 +251,6 @@ function ProfileStatsBar({
         <strong>{followingCount}</strong>
         <small>Following</small>
       </button>
-    </section>
-  );
-}
-
-function ProfileToolGrid({
-  onCopyProfileLink,
-  onOpenSettings,
-  onStartCreating,
-}: {
-  onCopyProfileLink: () => void;
-  onOpenSettings: () => void;
-  onStartCreating: () => void;
-}) {
-  const tools = [
-    { label: "Video", icon: Video, onClick: onStartCreating },
-    { label: "Dynamic", icon: Sparkles, onClick: onStartCreating },
-    { label: "Grade", icon: Crown, onClick: onOpenSettings },
-    { label: "Item Store", icon: Store, onClick: onStartCreating },
-    { label: "Wallet", icon: WalletCards, onClick: onOpenSettings },
-    { label: "Daily task", icon: Bell, onClick: onOpenSettings },
-    { label: "Live store", icon: Radio, onClick: onStartCreating },
-    { label: "Paid content", icon: BadgeCheck, onClick: onStartCreating },
-    { label: "Mall", icon: ShoppingBag, onClick: onCopyProfileLink },
-    { label: "Room Management", icon: Palette, onClick: onOpenSettings },
-  ];
-
-  return (
-    <section className="web-profile-tools" aria-label="Creator account tools">
-      {tools.map(({ icon: Icon, label, onClick }) => (
-        <button key={label} type="button" onClick={onClick}>
-          <Icon size={20} />
-          <span>{label}</span>
-        </button>
-      ))}
     </section>
   );
 }

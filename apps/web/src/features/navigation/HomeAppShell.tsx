@@ -12,6 +12,7 @@ import {
   fetchFeed,
   fetchLiveIndex,
   fetchNotifications,
+  fetchPost,
   fetchProfile,
   markNotificationsRead,
   rateLiveRoom,
@@ -41,10 +42,13 @@ import { SearchMessages } from "../chat/SearchMessages";
 import { StudioPanel } from "../studio/StudioPanel";
 import { PostEditPanel } from "../studio/PostEditPanel";
 import { ProfilePanel } from "../profile/ProfilePanel";
+import { ProfileServicePage, profileServices, type ProfileServiceId } from "../profile/services";
 import { ProfileSettingsPanel } from "../settings/ProfileSettingsPanel";
 import { PublicProfileScreen } from "../profile/PublicProfileScreen";
 import { DesktopSidebar } from "./DesktopSidebar";
 import { BottomNav } from "./BottomNav";
+import { AppTopBar } from "./AppTopBar";
+import { NotificationDrawer } from "../notifications/NotificationDrawer";
 import { createDisplayPosts, indexFor } from "../../shared/helpers";
 import { themeOptions } from "../../shared/theme";
 import type { DisplayPost, FeedMode, HomeTab, ProfileView, ThemeName } from "../../shared/types";
@@ -88,9 +92,12 @@ export function HomeAppShell({
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [profileView, setProfileView] = useState<ProfileView>("profile");
+  const [activeProfileServiceId, setActiveProfileServiceId] = useState<ProfileServiceId | null>(null);
   const [selectedProfilePost, setSelectedProfilePost] = useState<DisplayPost | null>(null);
   const [selectedLiveId, setSelectedLiveId] = useState<number | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pendingPostId, setPendingPostId] = useState<number | null>(() => readSharedPostId());
 
   const displayPosts = useMemo(() => createDisplayPosts(posts), [posts]);
   const homePosts = useMemo(() => {
@@ -108,6 +115,7 @@ export function HomeAppShell({
     return sorted.sort((left, right) => right.promotionScore - left.promotionScore || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
   }, [displayPosts, feedMode, user.id]);
   const selectedLive = liveRooms.find((room) => room.id === selectedLiveId) ?? liveRooms[0] ?? null;
+  const activeProfileService = activeProfileServiceId ? profileServices.find((service) => service.id === activeProfileServiceId) ?? null : null;
   const ratingsByLiveId = useMemo(() => {
     const ratings = new Map<number, LiveRating>();
     liveIndex?.ratings.forEach((rating) => ratings.set(rating.liveRoomId, rating));
@@ -149,6 +157,45 @@ export function HomeAppShell({
   useEffect(() => {
     void loadFeed();
   }, []);
+
+  useEffect(() => {
+    if (!pendingPostId || loading) {
+      return;
+    }
+
+    const existingPost = displayPosts.find((post) => post.id === pendingPostId);
+    if (existingPost) {
+      setSelectedProfilePost(existingPost);
+      setActiveTab("home");
+      setPendingPostId(null);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const post = await fetchPost(pendingPostId);
+        if (cancelled) {
+          return;
+        }
+        setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+        setSelectedProfilePost(createDisplayPosts([post])[0]);
+        setActiveTab("home");
+      } catch (err) {
+        if (!cancelled) {
+          setFeedError(err instanceof Error ? err.message : "Could not open shared post.");
+        }
+      } finally {
+        if (!cancelled) {
+          setPendingPostId(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displayPosts, loading, pendingPostId]);
 
   function openStream(room: LiveRoom) {
     setSelectedLiveId(room.id);
@@ -267,6 +314,10 @@ export function HomeAppShell({
     return uploadMedia(file);
   }
 
+  async function copyOwnProfileLink() {
+    await navigator.clipboard?.writeText(`${window.location.origin}/?profile=${profile?.user.id ?? user.id}`);
+  }
+
   async function openNotifications() {
     setNotificationOpen((value) => !value);
     if (!notificationOpen) {
@@ -316,148 +367,199 @@ export function HomeAppShell({
     }
     if (tab === "profiles") {
       setProfileView("profile");
+      setActiveProfileServiceId(null);
     }
     setActiveTab(tab);
+    setSidebarOpen(false);
   }
 
+  function openProfileService(serviceId: ProfileServiceId) {
+    setActiveProfileServiceId(serviceId);
+    setProfileView("service");
+  }
+
+  const unreadNotifications = notifications.filter((notification) => !notification.readAt).length;
+
   return (
-    <main className="social-shell">
+    <main className={`social-shell tab-${activeTab} ${sidebarOpen ? "sidebar-open" : ""}`}>
+      {activeTab === "studio" ? null : (
+        <AppTopBar
+          activeTab={activeTab}
+          notificationCount={unreadNotifications}
+          profileTitle={activeTab === "profiles" ? profileView === "settings" ? "Settings" : profileView === "service" ? activeProfileService?.label ?? "Services" : "Profile" : undefined}
+          profileView={profileView}
+          sidebarOpen={sidebarOpen}
+          onLogoClick={() => setSidebarOpen((value) => !value)}
+          onOpenMessages={() => changeTab("messages")}
+          onOpenNotifications={() => void openNotifications()}
+          onOpenProfile={() => changeTab("profiles")}
+        />
+      )}
+
+      {notificationOpen ? (
+        <div className="app-notification-layer">
+          <NotificationDrawer notifications={notifications} />
+        </div>
+      ) : null}
+
+      {sidebarOpen ? <button className="app-sidebar-scrim" type="button" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} /> : null}
+
       {selectedProfilePost || editingPost ? null : (
         <DesktopSidebar
           activeTab={activeTab}
           health={health}
-          notificationCount={notifications.filter((notification) => !notification.readAt).length}
+          notificationCount={unreadNotifications}
           onTabChange={changeTab}
           user={profile?.user ?? user}
         />
       )}
-      <section className={`phone-frame tab-${activeTab} ${activeTab === "profiles" ? `profile-view-${profileView}` : ""}`}>
-        {editingPost ? (
-          <PostEditPanel
-            post={editingPost}
-            onBack={() => setEditingPost(null)}
-            onSave={updateStudioPost}
-            onShareHome={() => {
-              setEditingPost(null);
-              setActiveTab("home");
-            }}
-          />
-        ) : selectedProfilePost ? (
-          <PublicProfileScreen
-            post={selectedProfilePost}
-            onBack={() => setSelectedProfilePost(null)}
-            chatUsers={chatUsers}
-            onOpenPost={setSelectedProfilePost}
-            posts={displayPosts}
-          />
-        ) : activeTab === "home" ? (
-          <>
-            <StoryHeader
-              liveRooms={liveRooms}
-              notificationCount={notifications.filter((notification) => !notification.readAt).length}
-              notifications={notifications}
-              notificationOpen={notificationOpen}
-              onOpenNotifications={() => void openNotifications()}
-              onCreateStory={() => changeTab("studio")}
-              onFeedModeChange={setFeedMode}
-              onOpenMessages={() => changeTab("messages")}
-              onOpenProfile={() => changeTab("profiles")}
-              onOpenStream={openStream}
-              feedMode={feedMode}
-              user={user}
+      <div className="app-outlet">
+        <section className={`phone-frame tab-${activeTab} ${activeTab === "profiles" ? `profile-view-${profileView}` : ""}`}>
+          {editingPost ? (
+            <PostEditPanel
+              post={editingPost}
+              onBack={() => setEditingPost(null)}
+              onSave={updateStudioPost}
+              onShareHome={() => {
+                setEditingPost(null);
+                setActiveTab("home");
+              }}
             />
-            {feedError ? <p className="feed-error">{feedError}</p> : null}
-            <HomeFeed
+          ) : selectedProfilePost ? (
+            <PublicProfileScreen
+              post={selectedProfilePost}
+              onBack={() => setSelectedProfilePost(null)}
+              chatUsers={chatUsers}
+              onOpenPost={setSelectedProfilePost}
+              posts={displayPosts}
+            />
+          ) : activeTab === "home" ? (
+            <>
+              <StoryHeader
+                liveRooms={liveRooms}
+                onCreateStory={() => changeTab("studio")}
+                onFeedModeChange={setFeedMode}
+                onOpenProfile={() => changeTab("profiles")}
+                onOpenStream={openStream}
+                feedMode={feedMode}
+                user={user}
+              />
+              {feedError ? <p className="feed-error">{feedError}</p> : null}
+              <HomeFeed
+                comments={comments}
+                isFollowing={isFollowing}
+                loading={loading}
+                onAddComment={addPostComment}
+                onLoadComments={loadPostComments}
+                onOpenProfile={setSelectedProfilePost}
+                onToggleFollow={toggleFollow}
+                posts={homePosts}
+              />
+            </>
+          ) : null}
+
+          {activeTab === "streams" ? (
+            <StreamScreen
               comments={comments}
-              isFollowing={isFollowing}
-              loading={loading}
-              onAddComment={addPostComment}
-              onLoadComments={loadPostComments}
-              onOpenProfile={setSelectedProfilePost}
+              liveIndex={liveIndex}
+              liveRooms={liveRooms}
+              onAddComment={addLiveComment}
+              onClose={() => setActiveTab("home")}
+              onLoadComments={loadLiveComments}
+              onOpenStream={openStream}
+              onRate={updateLiveRating}
+              onStartLiveCall={startLiveMeeting}
               onToggleFollow={toggleFollow}
-              posts={homePosts}
+              ratingsByLiveId={ratingsByLiveId}
+              selectedLive={selectedLive}
+              followersFor={followersFor}
+              isFollowing={isFollowing}
+              activeCall={activeCall}
+              callStatus={callStatus}
             />
-          </>
-        ) : null}
+          ) : null}
 
-        {activeTab === "streams" ? (
-          <StreamScreen
-            comments={comments}
-            liveIndex={liveIndex}
-            liveRooms={liveRooms}
-            onAddComment={addLiveComment}
-            onClose={() => setActiveTab("home")}
-            onLoadComments={loadLiveComments}
-            onOpenStream={openStream}
-            onRate={updateLiveRating}
-            onStartLiveCall={startLiveMeeting}
-            onToggleFollow={toggleFollow}
-            ratingsByLiveId={ratingsByLiveId}
-            selectedLive={selectedLive}
-            followersFor={followersFor}
-            isFollowing={isFollowing}
-            activeCall={activeCall}
-            callStatus={callStatus}
-          />
-        ) : null}
+          {activeTab === "messages" ? (
+            <SearchMessages
+              chatUsers={chatUsers}
+              contacts={chatContacts}
+              messages={chatMessages}
+              onAddUsersToRoom={addUsersToSelectedChat}
+              onCreateDirectChat={createDirectChat}
+              onCreateGroupChat={createGroupChat}
+              onOpenProfile={() => changeTab("profiles")}
+              onOpenThread={openThread}
+              onSendMessage={sendMessage}
+              onStartCall={startThreadCall}
+              onToggleFollow={toggleFollow}
+              selectedThreadId={selectedThreadId}
+              activeCall={activeCall}
+              callStatus={callStatus}
+              isFollowing={isFollowing}
+            />
+          ) : null}
 
-        {activeTab === "messages" ? (
-          <SearchMessages
-            chatUsers={chatUsers}
-            contacts={chatContacts}
-            messages={chatMessages}
-            onAddUsersToRoom={addUsersToSelectedChat}
-            onCreateDirectChat={createDirectChat}
-            onCreateGroupChat={createGroupChat}
-            onOpenProfile={() => changeTab("profiles")}
-            onOpenThread={openThread}
-            onSendMessage={sendMessage}
-            onStartCall={startThreadCall}
-            onToggleFollow={toggleFollow}
-            selectedThreadId={selectedThreadId}
-            activeCall={activeCall}
-            callStatus={callStatus}
-            isFollowing={isFollowing}
-          />
-        ) : null}
+          {activeTab === "studio" ? (
+            <StudioPanel
+              onCreatePost={publishStudioPost}
+              onExitStudio={() => changeTab("home")}
+              onUploadMedia={uploadStudioFile}
+              posts={displayPosts}
+              serviceLabel={serviceLabel}
+            />
+          ) : null}
 
-        {activeTab === "studio" ? (
-          <StudioPanel onCreatePost={publishStudioPost} onUploadMedia={uploadStudioFile} posts={displayPosts} serviceLabel={serviceLabel} />
-        ) : null}
+          {activeTab === "profiles" && profileView === "profile" ? (
+            <ProfilePanel
+              health={health}
+              chatUsers={chatUsers}
+              onEditPost={setEditingPost}
+              onLogout={onLogout}
+              onOpenSettings={() => setProfileView("settings")}
+              onOpenPost={setSelectedProfilePost}
+              onOpenService={openProfileService}
+              onStartCreating={() => changeTab("studio")}
+              posts={displayPosts}
+              profile={profile}
+              user={profile?.user ?? user}
+              followersCount={followersFor(user.name)}
+              followingCount={Object.values(followingMap).filter(Boolean).length + 42}
+            />
+          ) : null}
 
-        {activeTab === "profiles" && profileView === "profile" ? (
-          <ProfilePanel
-            health={health}
-            chatUsers={chatUsers}
-            onEditPost={setEditingPost}
-            onLogout={onLogout}
-            onOpenSettings={() => setProfileView("settings")}
-            onOpenPost={setSelectedProfilePost}
-            onStartCreating={() => changeTab("studio")}
-            posts={displayPosts}
-            profile={profile}
-            user={profile?.user ?? user}
-            followersCount={followersFor(user.name)}
-            followingCount={Object.values(followingMap).filter(Boolean).length + 42}
-          />
-        ) : null}
+          {activeTab === "profiles" && profileView === "service" && activeProfileServiceId ? (
+            <ProfileServicePage
+              onBack={() => {
+                setActiveProfileServiceId(null);
+                setProfileView("profile");
+              }}
+              onCopyProfileLink={() => void copyOwnProfileLink()}
+              onOpenSettings={() => setProfileView("settings")}
+              onStartCreating={() => changeTab("studio")}
+              posts={displayPosts.filter((post) => post.author.id === (profile?.user.id ?? user.id))}
+              profile={profile}
+              serviceId={activeProfileServiceId}
+              user={profile?.user ?? user}
+            />
+          ) : null}
 
-        {activeTab === "profiles" && profileView === "settings" ? (
-          <ProfileSettingsPanel
-            onBack={() => setProfileView("profile")}
-            onLogout={onLogout}
-            onSaveProfile={saveProfile}
-            onUploadMedia={uploadStudioFile}
-            profile={profile}
-            theme={theme}
-            themes={themeOptions}
-            onThemeChange={onThemeChange}
-            user={profile?.user ?? user}
-          />
-        ) : null}
+          {activeTab === "profiles" && profileView === "settings" ? (
+            <ProfileSettingsPanel
+              onBack={() => setProfileView("profile")}
+              onLogout={onLogout}
+              onSaveProfile={saveProfile}
+              onUploadMedia={uploadStudioFile}
+              profile={profile}
+              theme={theme}
+              themes={themeOptions}
+              onThemeChange={onThemeChange}
+              user={profile?.user ?? user}
+            />
+          ) : null}
 
-        {selectedProfilePost || editingPost ? null : <BottomNav activeTab={activeTab} onTabChange={changeTab} />}
-      </section>
+          {selectedProfilePost || editingPost ? null : <BottomNav activeTab={activeTab} onTabChange={changeTab} />}
+        </section>
+      </div>
 
       {notice ? (
         <div className="toast" role="status">
@@ -469,4 +571,24 @@ export function HomeAppShell({
       ) : null}
     </main>
   );
+}
+
+function readSharedPostId() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = Number(params.get("post") || params.get("p"));
+  if (Number.isFinite(fromQuery) && fromQuery > 0) {
+    return fromQuery;
+  }
+
+  const match = window.location.pathname.match(/^\/post\/(\d+)/);
+  if (!match) {
+    return null;
+  }
+
+  const fromPath = Number(match[1]);
+  return Number.isFinite(fromPath) && fromPath > 0 ? fromPath : null;
 }

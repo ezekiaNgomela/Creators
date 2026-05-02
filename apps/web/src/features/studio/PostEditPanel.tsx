@@ -68,7 +68,7 @@ export function PostEditPanel({
   }
 
   async function shareOutsideApp() {
-    const url = `${window.location.origin}/?post=${post.id}`;
+    const url = `${window.location.origin}/post/${post.id}`;
     const text = `${body}\n${url}`;
     if (navigator.share) {
       await navigator.share({ title: "Creators post", text: body, url });

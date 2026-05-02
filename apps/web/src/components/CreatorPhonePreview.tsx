@@ -1,6 +1,5 @@
 import { motion } from "framer-motion";
 import {
-  BadgeCheck,
   Bell,
   Crown,
   Grid3X3,
@@ -9,29 +8,15 @@ import {
   Radio,
   Settings,
   ShoppingBag,
-  Sparkles,
-  Store,
   UserRound,
-  Video,
-  WalletCards,
 } from "lucide-react";
+import { profileServices } from "../features/profile/services";
 
 const profileStats = [
   { label: "Fans", value: "1.3M" },
   { label: "Following", value: "2.6M" },
   { label: "Zircon", value: "5K" },
   { label: "Ruby", value: "2.5K" },
-];
-
-const creatorTools = [
-  { label: "Video", icon: Video },
-  { label: "Dynamic", icon: Sparkles },
-  { label: "Grade", icon: Crown },
-  { label: "Item Store", icon: Store },
-  { label: "Wallet", icon: WalletCards },
-  { label: "Live store", icon: Radio },
-  { label: "Paid content", icon: BadgeCheck },
-  { label: "Mall", icon: ShoppingBag },
 ];
 
 const postImages = [
@@ -104,7 +89,7 @@ export function CreatorPhonePreview() {
         </section>
 
         <section className="phone-tools">
-          {creatorTools.map(({ icon: Icon, label }) => (
+          {profileServices.map(({ icon: Icon, label }) => (
             <button key={label} type="button">
               <Icon size={19} />
               <span>{label}</span>
