@@ -70,7 +70,7 @@ function Get-PostgresTool($Name) {
     }
 
     $roots = Get-ChildItem "C:\Program Files\PostgreSQL" -Directory -ErrorAction SilentlyContinue |
-        Sort-Object Name -Descending
+    Sort-Object Name -Descending
     foreach ($root in $roots) {
         $candidate = Join-Path $root.FullName "bin\$Name.exe"
         if (Test-Path $candidate) {
@@ -111,7 +111,8 @@ function Stop-Listeners($Ports) {
             $process = Get-Process -Id $processId -ErrorAction Stop
             Stop-Process -Id $processId -Force -ErrorAction Stop
             Write-Warn "stopped old listener $($process.ProcessName) pid=$processId"
-        } catch {
+        }
+        catch {
             Write-Warn "could not stop old listener pid=${processId}: $($_.Exception.Message)"
         }
     }
@@ -126,16 +127,18 @@ function Test-Tcp($HostName, [int]$Port, [int]$TimeoutMs = 300) {
         }
         $client.EndConnect($async)
         return $true
-    } catch {
+    }
+    catch {
         return $false
-    } finally {
+    }
+    finally {
         $client.Close()
     }
 }
 
 function Get-ListenerPid([int]$Port) {
     $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue |
-        Select-Object -First 1
+    Select-Object -First 1
     if ($listener) {
         return $listener.OwningProcess
     }
@@ -150,17 +153,18 @@ function Stop-PostgresForData($DataPath) {
 
     $dataText = $resolvedData.Path
     $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -ieq "postgres.exe" -and
-            $_.CommandLine -and
-            $_.CommandLine.Contains($dataText)
-        }
+    Where-Object {
+        $_.Name -ieq "postgres.exe" -and
+        $_.CommandLine -and
+        $_.CommandLine.Contains($dataText)
+    }
 
     foreach ($process in $processes) {
         try {
             Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
             Write-Warn "stopped stale Postgres pid=$($process.ProcessId)"
-        } catch {
+        }
+        catch {
             Write-Warn "could not stop stale Postgres pid=$($process.ProcessId): $($_.Exception.Message)"
         }
     }
@@ -172,12 +176,12 @@ function Start-LoggedProcess($Name, $FilePath, [string[]]$Arguments, $WorkingDir
     Remove-Item -LiteralPath $stdout, $stderr -Force -ErrorAction SilentlyContinue
 
     $processArgs = @{
-        FilePath = $FilePath
-        WorkingDirectory = $WorkingDirectory
+        FilePath               = $FilePath
+        WorkingDirectory       = $WorkingDirectory
         RedirectStandardOutput = $stdout
-        RedirectStandardError = $stderr
-        WindowStyle = "Hidden"
-        PassThru = $true
+        RedirectStandardError  = $stderr
+        WindowStyle            = "Hidden"
+        PassThru               = $true
     }
     if ($Arguments.Count -gt 0) {
         $processArgs.ArgumentList = $Arguments
@@ -192,15 +196,16 @@ function Invoke-PostgresSql($PsqlPath, $Port, $User, $Password, $Database, $Sql)
     $oldPassword = $env:PGPASSWORD
     $oldPreference = $ErrorActionPreference
     $env:PGPASSWORD = $Password
-    $url = "postgres://$User@127.0.0.1:$Port/$Database`?sslmode=disable&connect_timeout=3"
+    $url = "postgres://$User@127.0.0.1:$Port/$Database`?sslmode=disable&connect_timeout=2"
     try {
         $ErrorActionPreference = "Continue"
         $output = & $PsqlPath -w $url -tAc $Sql 2>$null
         return [pscustomobject]@{
             ExitCode = $LASTEXITCODE
-            Output = $output
+            Output   = $output
         }
-    } finally {
+    }
+    finally {
         $env:PGPASSWORD = $oldPassword
         $ErrorActionPreference = $oldPreference
     }
@@ -238,7 +243,8 @@ function Start-Postgres {
     $process = $null
     if (Test-Tcp "127.0.0.1" $pgPort) {
         Write-Ready "Postgres already listening on 127.0.0.1:$pgPort"
-    } else {
+    }
+    else {
         Stop-PostgresForData $pgData
         $pidFile = Join-Path $pgData "postmaster.pid"
         Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
@@ -248,7 +254,7 @@ function Start-Postgres {
     }
 
     $ready = $false
-    for ($attempt = 1; $attempt -le 40; $attempt++) {
+    for ($attempt = 1; $attempt -le 120; $attempt++) {
         Start-Sleep -Milliseconds 500
         $result = Invoke-PostgresSql $psql $pgPort $pgUser $pgPassword "postgres" "SELECT 1"
         if ($result.ExitCode -eq 0 -and (First-Text $result.Output).Trim() -eq "1") {
@@ -257,7 +263,7 @@ function Start-Postgres {
         }
     }
     if (-not $ready) {
-        throw "Postgres did not accept SQL within 20 seconds. See .local\logs\postgres.err.log."
+        throw "Postgres did not accept SQL within 60 seconds. Please check the error log at: .local\logs\postgres.err.log"
     }
 
     $exists = Invoke-PostgresSql $psql $pgPort $pgUser $pgPassword "postgres" "SELECT 1 FROM pg_database WHERE datname='$pgDb'"
@@ -271,8 +277,8 @@ function Start-Postgres {
 
     return @{
         Port = $pgPort
-        Pid = if ($process) { $process.Id } else { Get-ListenerPid $pgPort }
-        Url = "postgres://$pgUser`:$pgPassword@127.0.0.1:$pgPort/$pgDb`?sslmode=disable"
+        Pid  = if ($process) { $process.Id } else { Get-ListenerPid $pgPort }
+        Url  = "postgres://$pgUser`:$pgPassword@127.0.0.1:$pgPort/$pgDb`?sslmode=disable"
     }
 }
 
@@ -294,14 +300,15 @@ function Start-Redis {
     $process = $null
     if (Test-Tcp "127.0.0.1" $redisPort) {
         Write-Ready "Redis already listening on 127.0.0.1:$redisPort"
-    } else {
+    }
+    else {
         Write-Step "starting Redis on 127.0.0.1:$redisPort"
         $process = Start-LoggedProcess "redis" $redisServer @($redisConf) $repoRoot
     }
     return @{
         Port = $redisPort
-        Pid = if ($process) { $process.Id } else { Get-ListenerPid $redisPort }
-        Url = "redis://127.0.0.1:$redisPort/0"
+        Pid  = if ($process) { $process.Id } else { Get-ListenerPid $redisPort }
+        Url  = "redis://127.0.0.1:$redisPort/0"
     }
 }
 
@@ -320,7 +327,8 @@ function Start-MinIO {
     $process = $null
     if (Test-Tcp "127.0.0.1" $apiPort) {
         Write-Ready "MinIO already listening on 127.0.0.1:$apiPort"
-    } else {
+    }
+    else {
         Write-Step "starting MinIO on 127.0.0.1:$apiPort"
         $process = Start-LoggedProcess "minio" $minioExe @(
             "server",
@@ -333,8 +341,8 @@ function Start-MinIO {
     }
 
     return @{
-        Pid = if ($process) { $process.Id } else { Get-ListenerPid $apiPort }
-        HealthUrl = "http://127.0.0.1:$apiPort/minio/health/live"
+        Pid        = if ($process) { $process.Id } else { Get-ListenerPid $apiPort }
+        HealthUrl  = "http://127.0.0.1:$apiPort/minio/health/live"
         ConsoleUrl = "http://127.0.0.1:$consolePort"
     }
 }
@@ -351,7 +359,8 @@ function Start-Api($PostgresUrl, $RedisUrl, $MinioHealthUrl) {
         if ($LASTEXITCODE -ne 0) {
             throw "go build failed with exit code $LASTEXITCODE"
         }
-    } finally {
+    }
+    finally {
         Pop-Location
     }
 
@@ -365,8 +374,8 @@ function Start-Api($PostgresUrl, $RedisUrl, $MinioHealthUrl) {
     Write-Step "starting Go API on 127.0.0.1:$apiPort"
     $process = Start-LoggedProcess "api" $apiExe @() $repoRoot
     return @{
-        Pid = $process.Id
-        Url = "http://127.0.0.1:$apiPort/api"
+        Pid       = $process.Id
+        Url       = "http://127.0.0.1:$apiPort/api"
         HealthUrl = "http://127.0.0.1:$apiPort/api/health"
     }
 }
@@ -414,13 +423,13 @@ if (-not $NoFrontend -and -not $ServicesOnly) {
 
 $state = [ordered]@{
     startedAt = (Get-Date).ToString("o")
-    services = [ordered]@{
+    services  = [ordered]@{
         postgres = @{ port = $postgres.Port; pid = $postgres.Pid }
-        redis = @{ port = $redis.Port; pid = $redis.Pid }
-        minio = @{ healthUrl = $minio.HealthUrl; consoleUrl = $minio.ConsoleUrl; pid = $minio.Pid }
+        redis    = @{ port = $redis.Port; pid = $redis.Pid }
+        minio    = @{ healthUrl = $minio.HealthUrl; consoleUrl = $minio.ConsoleUrl; pid = $minio.Pid }
     }
-    backend = if ($api) { @{ url = $api.Url; healthUrl = $api.HealthUrl; pid = $api.Pid } } else { $null }
-    frontend = if ($web) { @{ url = $web.Url; pid = $web.Pid } } else { $null }
+    backend   = if ($api) { @{ url = $api.Url; healthUrl = $api.HealthUrl; pid = $api.Pid } } else { $null }
+    frontend  = if ($web) { @{ url = $web.Url; pid = $web.Pid } } else { $null }
 }
 
 $state | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $localDir "pids.json")

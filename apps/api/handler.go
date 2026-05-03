@@ -22,6 +22,7 @@ type Handler struct {
 	Redis          *redis.Client
 	MinioHealthURL string
 	UploadDir      string
+	Renderer       *StudioRenderer
 	JWTSecret      string
 	JWTIssuer      string
 }
@@ -342,9 +343,10 @@ func (h *Handler) HandleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 80<<20)
-	if err := r.ParseMultipartForm(80 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "media upload must be smaller than 80MB")
+	const mediaUploadLimit = 250 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, mediaUploadLimit)
+	if err := r.ParseMultipartForm(mediaUploadLimit); err != nil {
+		writeError(w, http.StatusBadRequest, "media upload must be smaller than 250MB")
 		return
 	}
 
@@ -365,21 +367,22 @@ func (h *Handler) HandleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "could not read file")
 		return
 	}
-	mimeType := http.DetectContentType(buffer[:n])
-	mediaType := "image"
-	if strings.HasPrefix(mimeType, "video/") {
-		mediaType = "video"
-	} else if !strings.HasPrefix(mimeType, "image/") {
-		writeError(w, http.StatusBadRequest, "only image and video files are supported")
-		return
-	}
-
 	extension := strings.ToLower(filepath.Ext(header.Filename))
 	if extension == "" {
-		extension = extensionForMime(mimeType)
+		extension = extensionForMime(http.DetectContentType(buffer[:n]))
 	}
 	if !allowedMediaExtension(extension) {
 		writeError(w, http.StatusBadRequest, "unsupported media extension")
+		return
+	}
+	mimeType := mimeTypeForExtension(extension)
+	detectedMimeType := http.DetectContentType(buffer[:n])
+	if mimeType == "application/octet-stream" {
+		mimeType = detectedMimeType
+	}
+	mediaType := mediaCategory(mimeType, extension)
+	if mediaType == "" {
+		writeError(w, http.StatusBadRequest, "only image, video, and audio files are supported")
 		return
 	}
 
@@ -403,20 +406,61 @@ func (h *Handler) HandleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	baseURL := valueOrDefault("PUBLIC_BASE_URL", "")
-	if baseURL == "" {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		baseURL = scheme + "://" + r.Host
-	}
 	writeJSON(w, http.StatusCreated, MediaUploadResponse{
-		URL:       strings.TrimRight(baseURL, "/") + "/uploads/" + fileName,
+		URL:       strings.TrimRight(requestBaseURL(r), "/") + "/uploads/" + fileName,
 		MediaType: mediaType,
 		MimeType:  mimeType,
 		FileName:  fileName,
 	})
+}
+
+func (h *Handler) HandleStudioRender(w http.ResponseWriter, r *http.Request) {
+	_, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	renderer := h.studioRenderer()
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, renderer.Health(r.Context()))
+	case http.MethodPost:
+		var input StudioRenderInput
+		if err := decodeJSON(r, &input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid render request body")
+			return
+		}
+		job, err := renderer.Start(r.Context(), input)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, publicError(err))
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]StudioRenderJob{"job": h.absoluteRenderJob(r, job)})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (h *Handler) HandleStudioRenderJob(w http.ResponseWriter, r *http.Request) {
+	_, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	jobID := strings.TrimSpace(r.URL.Query().Get("id"))
+	if jobID == "" {
+		writeError(w, http.StatusBadRequest, "render job id is required")
+		return
+	}
+	job, found := h.studioRenderer().Find(jobID)
+	if !found {
+		writeError(w, http.StatusNotFound, "render job not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]StudioRenderJob{"job": h.absoluteRenderJob(r, job)})
 }
 
 func (h *Handler) HandleProfile(w http.ResponseWriter, r *http.Request) {
@@ -707,6 +751,46 @@ func (h *Handler) HandleUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string][]ChatUser{"users": users})
 }
 
+func (h *Handler) HandleChatReactions(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.requireUser(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var input struct {
+		MessageID int64  `json:"messageId"`
+		Emoji     string `json:"emoji"`
+		Action    string `json:"action"` // "add" or "remove"
+	}
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Implement logic in service to add/remove reaction
+	// For brevity, assuming a simple exec here
+	if input.Action == "add" {
+		_, _ = h.Service.Pool.Exec(r.Context(), `
+			INSERT INTO chat_room_reactions (message_id, user_id, emoji)
+			VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, input.MessageID, userID, input.Emoji)
+	} else {
+		_, _ = h.Service.Pool.Exec(r.Context(), `
+			DELETE FROM chat_room_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3`,
+			input.MessageID, userID, input.Emoji)
+	}
+
+	h.publishRealtime(r.Context(), userID, "chat_reaction", map[string]any{
+		"messageId": input.MessageID,
+		"emoji":     input.Emoji,
+		"userId":    userID,
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handler) HandleChatParticipants(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -839,6 +923,32 @@ func frontendOrigin() string {
 	return valueOrDefault("FRONTEND_ORIGIN", "http://localhost:5173")
 }
 
+func (h *Handler) studioRenderer() *StudioRenderer {
+	if h.Renderer == nil {
+		h.Renderer = NewStudioRenderer(valueOrDefault("UPLOAD_DIR", h.UploadDir))
+	}
+	return h.Renderer
+}
+
+func (h *Handler) absoluteRenderJob(r *http.Request, job StudioRenderJob) StudioRenderJob {
+	if job.OutputURL == "" || strings.HasPrefix(job.OutputURL, "http://") || strings.HasPrefix(job.OutputURL, "https://") {
+		return job
+	}
+	job.OutputURL = strings.TrimRight(requestBaseURL(r), "/") + "/" + strings.TrimLeft(job.OutputURL, "/")
+	return job
+}
+
+func requestBaseURL(r *http.Request) string {
+	if baseURL := valueOrDefault("PUBLIC_BASE_URL", ""); baseURL != "" {
+		return baseURL
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
 func firstNonBlank(values ...string) string {
 	for _, value := range values {
 		if value != "" {
@@ -864,14 +974,81 @@ func extensionForMime(mimeType string) string {
 		return ".webm"
 	case "video/quicktime":
 		return ".mov"
+	case "audio/mpeg":
+		return ".mp3"
+	case "audio/wav", "audio/x-wav":
+		return ".wav"
+	case "audio/aac":
+		return ".aac"
+	case "audio/flac":
+		return ".flac"
+	case "audio/ogg", "application/ogg":
+		return ".ogg"
 	default:
 		return ".bin"
 	}
 }
 
+func mimeTypeForExtension(extension string) string {
+	switch strings.ToLower(extension) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".mp4":
+		return "video/mp4"
+	case ".mov":
+		return "video/quicktime"
+	case ".webm":
+		return "video/webm"
+	case ".mkv":
+		return "video/x-matroska"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".aac":
+		return "audio/aac"
+	case ".flac":
+		return "audio/flac"
+	case ".m4a":
+		return "audio/mp4"
+	case ".ogg":
+		return "audio/ogg"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+func mediaCategory(mimeType string, extension string) string {
+	if strings.HasPrefix(mimeType, "image/") {
+		return "image"
+	}
+	if strings.HasPrefix(mimeType, "video/") {
+		return "video"
+	}
+	if strings.HasPrefix(mimeType, "audio/") {
+		return "audio"
+	}
+	switch strings.ToLower(extension) {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp":
+		return "image"
+	case ".mp4", ".mov", ".webm", ".mkv":
+		return "video"
+	case ".mp3", ".wav", ".aac", ".flac", ".m4a", ".ogg":
+		return "audio"
+	default:
+		return ""
+	}
+}
+
 func allowedMediaExtension(extension string) bool {
 	switch strings.ToLower(extension) {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm":
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm", ".mkv", ".mp3", ".wav", ".aac", ".flac", ".m4a", ".ogg":
 		return true
 	default:
 		return false

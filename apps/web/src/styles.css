@@ -10772,6 +10772,14 @@ body,
   color: #00c789;
 }
 
+.studio-reference-brand em.studio-render-status.offline svg {
+  color: #ff6848;
+}
+
+.studio-reference-brand em.studio-render-status.ready svg {
+  color: #00c789;
+}
+
 .studio-reference-actions {
   flex: 0 0 auto;
   gap: 8px;
@@ -11177,7 +11185,7 @@ body,
 
 .studio-inspector-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-bottom: 1px solid rgba(255, 255, 255, 0.09);
   padding: 0 10px;
 }
@@ -11300,7 +11308,8 @@ body,
 }
 
 .studio-icon-row,
-.studio-chip-options {
+.studio-chip-options,
+.studio-format-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -11308,6 +11317,7 @@ body,
 
 .studio-icon-row button,
 .studio-chip-options button,
+.studio-format-options button,
 .studio-reset-crop {
   display: inline-flex;
   min-height: 34px;
@@ -11324,9 +11334,108 @@ body,
 }
 
 .studio-chip-options button.active,
-.studio-chip-options button:hover {
+.studio-chip-options button:hover,
+.studio-format-options button.active,
+.studio-format-options button:hover {
   border-color: rgba(255, 217, 26, 0.44);
   color: #ffd91a;
+}
+
+.studio-selected-clip-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.studio-selected-clip-card strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-selected-clip-card span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.64rem;
+  font-weight: 760;
+}
+
+.studio-render-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(255, 104, 72, 0.22);
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: rgba(255, 104, 72, 0.07);
+}
+
+.studio-render-card.ready {
+  border-color: rgba(47, 240, 189, 0.26);
+  background: rgba(47, 240, 189, 0.07);
+}
+
+.studio-render-card strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-render-card span {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.62rem;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.studio-effect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.studio-effect-grid button {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  min-height: 52px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.78);
+  text-align: left;
+}
+
+.studio-effect-grid button.active,
+.studio-effect-grid button:hover {
+  border-color: rgba(47, 240, 189, 0.46);
+  background: rgba(47, 240, 189, 0.09);
+  color: #fff;
+}
+
+.studio-effect-grid strong {
+  overflow: hidden;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-effect-grid span {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .studio-reset-crop {
@@ -11340,7 +11449,7 @@ body,
 .studio-reference-quickbar {
   grid-area: quickbar;
   display: grid;
-  grid-template-columns: repeat(9, 34px) minmax(0, 1fr) 32px minmax(90px, 130px) 32px;
+  grid-template-columns: repeat(12, 34px) minmax(0, 1fr) 32px minmax(90px, 130px) 32px;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -11381,6 +11490,16 @@ body,
   background: #0c0f12;
 }
 
+.studio-timeline-scroll-container {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 180px minmax(720px, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .studio-layer-list {
   display: grid;
   align-content: start;
@@ -11393,7 +11512,7 @@ body,
 
 .studio-layer-list button {
   display: grid;
-  grid-template-columns: 24px 24px minmax(0, 1fr);
+  grid-template-columns: 24px 24px minmax(0, 1fr) 6px auto;
   gap: 8px;
   align-items: center;
   min-height: 43px;
@@ -11415,6 +11534,23 @@ body,
   font-weight: 820;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.studio-layer-list em {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.studio-tracks-content {
+  display: contents;
 }
 
 .studio-timeline-board {
@@ -11490,6 +11626,7 @@ body,
   align-items: center;
   gap: 7px;
   overflow: hidden;
+  border: 1px solid transparent;
   border-radius: 5px;
   padding: 0 10px;
   color: #fff;
@@ -11498,19 +11635,36 @@ body,
   white-space: nowrap;
 }
 
+.timeline-clip {
+  cursor: pointer;
+  text-align: left;
+}
+
+.timeline-clip.selected {
+  border-color: #ffd91a;
+  box-shadow: inset 0 0 0 1px rgba(255, 217, 26, 0.72);
+}
+
 .timeline-clip.text {
   min-width: min(220px, calc(100% - 54px));
   background: #6b498c;
 }
 
-.timeline-clip.video {
+.timeline-clip.video,
+.timeline-clip.image {
   border: 2px solid #ffd91a;
   background: rgba(255, 217, 26, 0.12);
   color: #fff;
   padding-inline: 4px 10px;
 }
 
+.timeline-clip.image {
+  border-color: rgba(65, 238, 192, 0.72);
+  background: rgba(65, 238, 192, 0.09);
+}
+
 .timeline-clip.video img,
+.timeline-clip.image img,
 .timeline-frame img {
   width: 56px;
   height: 100%;
@@ -11518,9 +11672,22 @@ body,
   object-fit: cover;
 }
 
-.timeline-clip.video em {
+.timeline-clip.video em,
+.timeline-clip.image em,
+.timeline-clip.text em,
+.timeline-clip.effect em,
+.timeline-clip.audio em {
+  overflow: hidden;
   color: #fff;
   font-style: normal;
+  text-overflow: ellipsis;
+}
+
+.timeline-clip small {
+  flex: 0 0 auto;
+  opacity: 0.58;
+  font-size: 0.58rem;
+  font-weight: 800;
 }
 
 .timeline-clip.effect {
@@ -11529,6 +11696,34 @@ body,
 
 .timeline-clip.audio {
   background: rgba(22, 188, 150, 0.6);
+}
+
+.timeline-clip.audio-effect-noise-reduction {
+  background: rgba(28, 146, 126, 0.72);
+}
+
+.timeline-clip.audio-effect-loudness {
+  background: rgba(255, 187, 46, 0.58);
+}
+
+.timeline-clip.audio-effect-distortion {
+  background: repeating-linear-gradient(90deg, rgba(255, 88, 88, 0.74) 0 10px, rgba(151, 46, 255, 0.68) 10px 20px);
+}
+
+.timeline-clip.audio-effect-flanger {
+  background: linear-gradient(90deg, rgba(47, 240, 189, 0.72), rgba(74, 144, 255, 0.62), rgba(47, 240, 189, 0.72));
+}
+
+.timeline-clip.audio-effect-de-esser {
+  background: rgba(86, 180, 255, 0.62);
+}
+
+.timeline-clip.audio-effect-bass-boost {
+  background: rgba(77, 205, 113, 0.68);
+}
+
+.timeline-clip.audio-effect-echo {
+  background: linear-gradient(90deg, rgba(22, 188, 150, 0.68), rgba(22, 188, 150, 0.28));
 }
 
 .timeline-frame {
@@ -11638,7 +11833,7 @@ body,
       "mobiletools"
       "mobileedit";
     grid-template-columns: 1fr;
-    grid-template-rows: 56px minmax(0, 47svh) minmax(0, 30svh) 58px 58px;
+    grid-template-rows: 56px minmax(0, 45svh) minmax(0, 27svh) 54px 82px;
     border: 0;
   }
 
@@ -11720,7 +11915,7 @@ body,
   }
 
   .studio-reference-preview {
-    width: min(100%, 330px);
+    width: min(calc(100% - 48px), 302px);
     align-self: end;
   }
 
@@ -11737,6 +11932,11 @@ body,
 
   .studio-reference-timeline {
     grid-template-columns: 1fr;
+    overflow: hidden;
+  }
+
+  .studio-timeline-scroll-container {
+    grid-template-columns: minmax(0, 1fr);
     overflow: hidden;
   }
 
@@ -11778,6 +11978,7 @@ body,
   }
 
   .timeline-clip.video img,
+  .timeline-clip.image img,
   .timeline-frame img {
     width: 38px;
   }
@@ -11810,7 +12011,7 @@ body,
 
   .studio-mobile-editbar {
     grid-area: mobileedit;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .studio-mobile-actions button,
@@ -11819,11 +12020,20 @@ body,
     min-width: 0;
     place-items: center;
     gap: 3px;
+    min-height: 34px;
     border-radius: 8px;
     background: transparent;
     color: rgba(255, 255, 255, 0.82);
-    font-size: 0.58rem;
+    font-size: 0.52rem;
     font-weight: 760;
+  }
+
+  .studio-mobile-actions button span,
+  .studio-mobile-editbar button span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .studio-mobile-actions button:hover,
@@ -11835,7 +12045,7 @@ body,
 
   .studio-mobile-actions svg,
   .studio-mobile-editbar svg {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .studio-floating-status {

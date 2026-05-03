@@ -88,6 +88,52 @@ export type MediaUploadResponse = {
   fileName: string;
 };
 
+export type StudioRenderClipInput = {
+  id: string;
+  type: "text" | "video" | "image" | "effect" | "audio" | string;
+  track: string;
+  title: string;
+  url?: string;
+  start: number;
+  inPoint: number;
+  outPoint: number;
+  sourceDuration: number;
+  format: string;
+  gain?: number;
+  audioEffect?: string;
+};
+
+export type StudioRenderInput = {
+  clips: StudioRenderClipInput[];
+  outputFormat: string;
+  aspectRatio: string;
+  filterName: string;
+  cropZoom: number;
+  rotation: number;
+};
+
+export type StudioRendererHealth = {
+  available: boolean;
+  binary: string;
+  version: string;
+  message: string;
+  supportedInputs: string[];
+  supportedOutputs: string[];
+};
+
+export type StudioRenderJob = {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | string;
+  message: string;
+  outputUrl: string;
+  outputFormat: string;
+  rendererAvailable: boolean;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  input?: StudioRenderInput;
+};
+
 export type Notification = {
   id: number;
   title: string;
@@ -284,6 +330,23 @@ export async function uploadMedia(file: File): Promise<MediaUploadResponse> {
   });
 }
 
+export async function fetchStudioRendererHealth(): Promise<StudioRendererHealth> {
+  return apiRequest<StudioRendererHealth>("/studio/render");
+}
+
+export async function startStudioRender(input: StudioRenderInput): Promise<StudioRenderJob> {
+  const response = await apiRequest<{ job: StudioRenderJob }>("/studio/render", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return normalizeStudioRenderJob(response.job);
+}
+
+export async function fetchStudioRenderJob(id: string): Promise<StudioRenderJob> {
+  const response = await apiRequest<{ job: StudioRenderJob }>(`/studio/render/jobs?id=${encodeURIComponent(id)}`);
+  return normalizeStudioRenderJob(response.job);
+}
+
 export async function createPost(input: PostInput): Promise<FeedPost> {
   const response = await apiRequest<{ post: FeedPost }>("/posts", {
     method: "POST",
@@ -406,4 +469,15 @@ export async function sendChatMessage(input: { contactId: string; body: string }
     body: JSON.stringify({ roomId: input.contactId, body: input.body }),
   });
   return response.message;
+}
+
+function normalizeStudioRenderJob(job: StudioRenderJob): StudioRenderJob {
+  if (!job.outputUrl || /^https?:\/\//i.test(job.outputUrl)) {
+    return job;
+  }
+  const apiOrigin = API_BASE_URL.replace(/\/api$/i, "");
+  return {
+    ...job,
+    outputUrl: `${apiOrigin}${job.outputUrl.startsWith("/") ? "" : "/"}${job.outputUrl}`,
+  };
 }

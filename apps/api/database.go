@@ -134,23 +134,6 @@ CREATE TABLE IF NOT EXISTS call_participants (
 	PRIMARY KEY (call_id, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS chat_contacts (
-	id TEXT PRIMARY KEY,
-	name TEXT NOT NULL,
-	subtitle TEXT NOT NULL DEFAULT '',
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS chat_messages (
-	id BIGSERIAL PRIMARY KEY,
-	user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-	contact_id TEXT NOT NULL,
-	body TEXT NOT NULL,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-	sender_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
-	sender_name TEXT
-);
-
 CREATE TABLE IF NOT EXISTS chat_rooms (
 	id BIGSERIAL PRIMARY KEY,
 	type TEXT NOT NULL DEFAULT 'direct' CHECK (type IN ('direct', 'group')),
@@ -178,8 +161,15 @@ CREATE TABLE IF NOT EXISTS chat_room_messages (
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS sender_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
-ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS sender_name TEXT;
+CREATE TABLE IF NOT EXISTS chat_room_reactions (
+	id BIGSERIAL PRIMARY KEY,
+	message_id BIGINT NOT NULL REFERENCES chat_room_messages(id) ON DELETE CASCADE,
+	user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	emoji TEXT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+	UNIQUE(message_id, user_id, emoji)
+);
+
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'image';
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS filter_name TEXT NOT NULL DEFAULT 'Original';
@@ -200,9 +190,9 @@ CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_target ON comments(target_type, target_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_call_participants_user ON call_participants(user_id, call_id);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_user_contact ON chat_messages(user_id, contact_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_room_participants_user ON chat_room_participants(user_id, room_id);
 CREATE INDEX IF NOT EXISTS idx_chat_room_messages_room ON chat_room_messages(room_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_reactions_message ON chat_room_reactions(message_id);
 `
 
 func seedDatabase(ctx context.Context, pool *pgxpool.Pool) error {
@@ -430,28 +420,6 @@ func seedDatabase(ctx context.Context, pool *pgxpool.Pool) error {
 			WHERE title = $1
 		`, room.Title, room.CoverURL); err != nil {
 			return fmt.Errorf("seed live room cover %s: %w", room.Title, err)
-		}
-	}
-
-	contacts := []struct {
-		ID       string
-		Name     string
-		Subtitle string
-	}{
-		{"alejandro-hicks", "Alejandro Hicks", "Launch planning and creator operations"},
-		{"mika-studio", "Mika Studio", "Commerce room host"},
-		{"noor-creates", "Noor Creates", "Video editor and live co-host"},
-		{"maker-table", "The Maker Table", "Community desk"},
-	}
-	for _, contact := range contacts {
-		if _, err := pool.Exec(ctx, `
-			INSERT INTO chat_contacts (id, name, subtitle)
-			VALUES ($1, $2, $3)
-			ON CONFLICT (id) DO UPDATE
-			SET name = EXCLUDED.name,
-				subtitle = EXCLUDED.subtitle
-		`, contact.ID, contact.Name, contact.Subtitle); err != nil {
-			return fmt.Errorf("seed contact %s: %w", contact.ID, err)
 		}
 	}
 

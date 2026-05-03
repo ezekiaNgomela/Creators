@@ -101,6 +101,52 @@ type MediaUploadResponse struct {
 	FileName  string `json:"fileName"`
 }
 
+type StudioRenderClip struct {
+	ID             string  `json:"id"`
+	Type           string  `json:"type"`
+	Track          string  `json:"track"`
+	Title          string  `json:"title"`
+	URL            string  `json:"url"`
+	Start          float64 `json:"start"`
+	InPoint        float64 `json:"inPoint"`
+	OutPoint       float64 `json:"outPoint"`
+	SourceDuration float64 `json:"sourceDuration"`
+	Format         string  `json:"format"`
+	Gain           float64 `json:"gain"`
+	AudioEffect    string  `json:"audioEffect"`
+}
+
+type StudioRenderInput struct {
+	Clips        []StudioRenderClip `json:"clips"`
+	OutputFormat string             `json:"outputFormat"`
+	AspectRatio  string             `json:"aspectRatio"`
+	FilterName   string             `json:"filterName"`
+	CropZoom     float64            `json:"cropZoom"`
+	Rotation     int                `json:"rotation"`
+}
+
+type StudioRendererHealth struct {
+	Available        bool     `json:"available"`
+	Binary           string   `json:"binary"`
+	Version          string   `json:"version"`
+	Message          string   `json:"message"`
+	SupportedInputs  []string `json:"supportedInputs"`
+	SupportedOutputs []string `json:"supportedOutputs"`
+}
+
+type StudioRenderJob struct {
+	ID                string  `json:"id"`
+	Status            string  `json:"status"`
+	Message           string  `json:"message"`
+	OutputURL         string  `json:"outputUrl"`
+	OutputFormat      string  `json:"outputFormat"`
+	RendererAvailable bool    `json:"rendererAvailable"`
+	CreatedAt         string  `json:"createdAt"`
+	StartedAt         *string `json:"startedAt"`
+	FinishedAt        *string `json:"finishedAt"`
+	Input             any     `json:"input,omitempty"`
+}
+
 type Notification struct {
 	ID        int64   `json:"id"`
 	Title     string  `json:"title"`
