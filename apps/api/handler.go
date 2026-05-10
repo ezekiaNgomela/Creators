@@ -50,7 +50,7 @@ func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	checks := map[string]string{
 		"postgres": "down",
 		"redis":    "down",
-		"minio":    "down",
+		"minio":    "skipped",
 	}
 	if err := h.Service.Ping(ctx); err == nil {
 		checks["postgres"] = "up"
@@ -58,14 +58,17 @@ func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	if err := h.Redis.Ping(ctx).Err(); err == nil {
 		checks["redis"] = "up"
 	}
-	if minioIsUp(ctx, h.MinioHealthURL) {
-		checks["minio"] = "up"
+	if h.MinioHealthURL != "" {
+		checks["minio"] = "down"
+		if minioIsUp(ctx, h.MinioHealthURL) {
+			checks["minio"] = "up"
+		}
 	}
 
 	status := "ok"
 	code := http.StatusOK
 	for _, value := range checks {
-		if value != "up" {
+		if value != "up" && value != "skipped" {
 			status = "degraded"
 			code = http.StatusServiceUnavailable
 			break
@@ -920,7 +923,11 @@ func (h *Handler) redirectGoogleError(w http.ResponseWriter, r *http.Request, co
 }
 
 func frontendOrigin() string {
-	return valueOrDefault("FRONTEND_ORIGIN", "http://localhost:5173")
+	origins := frontendOrigins()
+	if len(origins) == 0 {
+		return "http://localhost:5173"
+	}
+	return origins[0]
 }
 
 func (h *Handler) studioRenderer() *StudioRenderer {

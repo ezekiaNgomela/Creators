@@ -5,13 +5,17 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 func main() {
-	port := valueOrDefault("APP_PORT", valueOrDefault("API_PORT", "18000"))
+	port := firstEnv("PORT", "APP_PORT", "API_PORT")
+	if port == "" {
+		port = "18000"
+	}
 	postgresURL := firstEnv("POSTGRES_URL", "DATABASE_URL")
 	if postgresURL == "" {
 		postgresURL = "postgres://postgres:postgres@127.0.0.1:15432/creators?sslmode=disable"
@@ -36,7 +40,7 @@ func main() {
 	handler := &Handler{
 		Service:        &DataService{Pool: pool},
 		Redis:          redisClient,
-		MinioHealthURL: valueOrDefault("MINIO_HEALTH_URL", "http://127.0.0.1:9000/minio/health/live"),
+		MinioHealthURL: minioHealthURL(),
 		UploadDir:      uploadDir,
 		Renderer:       NewStudioRenderer(uploadDir),
 		JWTSecret:      valueOrDefault("JWT_SECRET", "change-me"),
@@ -79,6 +83,22 @@ func main() {
 	log.Printf("creators api listening on :%s", port)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server failed: %v", err)
+	}
+}
+
+func minioHealthURL() string {
+	if envFlag("DISABLE_MINIO_HEALTH") {
+		return ""
+	}
+	return valueOrDefault("MINIO_HEALTH_URL", "http://127.0.0.1:9000/minio/health/live")
+}
+
+func envFlag(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }
 
