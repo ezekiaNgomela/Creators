@@ -75,13 +75,26 @@ func withCORS(next http.Handler) http.Handler {
 }
 
 func isAllowedOrigin(origin string) bool {
-	frontendOrigin := valueOrDefault("FRONTEND_ORIGIN", "http://localhost:5173")
-	if origin == frontendOrigin {
-		return true
+	for _, allowed := range frontendOrigins() {
+		if origin == allowed {
+			return true
+		}
 	}
 	return strings.HasPrefix(origin, "http://localhost:") ||
 		strings.HasPrefix(origin, "http://127.0.0.1:") ||
 		strings.HasPrefix(origin, "http://192.168.")
+}
+
+func frontendOrigins() []string {
+	configured := valueOrDefault("FRONTEND_ORIGIN", "http://localhost:5173")
+	origins := make([]string, 0, 2)
+	for _, value := range strings.Split(configured, ",") {
+		value = strings.TrimSpace(strings.TrimRight(value, "/"))
+		if value != "" {
+			origins = append(origins, value)
+		}
+	}
+	return origins
 }
 
 func createToken(user User, secret string, issuer string) (string, error) {
