@@ -1,9 +1,11 @@
 services:
+
+services:
   - type: web
     name: creators-api
     runtime: go
-    buildCommand: cd apps/api && go mod download && go build -o /tmp/creators-api .
-    startCommand: /tmp/creators-api
+    buildCommand: cd apps/api && go mod download && go build -o creators-api .
+    startCommand: cd apps/api && ./creators-api
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
