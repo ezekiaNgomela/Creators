@@ -2,7 +2,6 @@ services:
   - type: web
     name: creators-api
     runtime: go
-    plan: free
     buildCommand: cd apps/api && go mod download && go build -o /tmp/creators-api .
     startCommand: /tmp/creators-api
     healthCheckPath: /api/health
@@ -28,7 +27,6 @@ services:
   - type: web
     name: creators-web
     runtime: static
-    plan: free
     buildCommand: cd apps/web && npm ci && npm run build
     staticPublishPath: apps/web/dist
     envVars:
@@ -42,7 +40,6 @@ services:
   - type: web
     name: creators-mobile-web
     runtime: static
-    plan: free
     buildCommand: cd apps/mobile && npm ci && npx expo export --platform web
     staticPublishPath: apps/mobile/dist
     envVars:
@@ -55,9 +52,8 @@ services:
 
   - type: keyvalue
     name: creators-redis
-    plan: free
     ipAllowList: []
 
 databases:
   - name: creators-postgres
-    plan: free
+
