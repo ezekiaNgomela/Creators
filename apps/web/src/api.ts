@@ -1,4 +1,9 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:18000/api").replace(/\/$/, "");
+const FALLBACK_API_BASE_URL =
+  typeof window !== "undefined" && window.location.hostname.endsWith(".onrender.com")
+    ? "https://creators-api.onrender.com/api"
+    : "http://localhost:18000/api";
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? FALLBACK_API_BASE_URL).replace(/\/$/, "");
 const TOKEN_KEY = "creators.authToken";
 
 export type HealthResponse = {
