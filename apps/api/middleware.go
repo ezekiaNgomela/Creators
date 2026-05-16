@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -80,6 +81,15 @@ func isAllowedOrigin(origin string) bool {
 			return true
 		}
 	}
+
+	parsed, err := url.Parse(origin)
+	if err == nil {
+		host := strings.ToLower(parsed.Hostname())
+		if parsed.Scheme == "https" && (host == "onrender.com" || strings.HasSuffix(host, ".onrender.com")) {
+			return true
+		}
+	}
+
 	return strings.HasPrefix(origin, "http://localhost:") ||
 		strings.HasPrefix(origin, "http://127.0.0.1:") ||
 		strings.HasPrefix(origin, "http://192.168.")
