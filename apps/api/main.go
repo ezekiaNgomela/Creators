@@ -23,6 +23,10 @@ func main() {
 	redisURL := valueOrDefault("REDIS_URL", "redis://127.0.0.1:16379/0")
 
 	ctx := context.Background()
+	if err := ensureSchemaPrerequisites(ctx, postgresURL); err != nil {
+		log.Fatalf("database prerequisite initialization failed: %v", err)
+	}
+
 	pool, err := initDB(ctx, postgresURL)
 	if err != nil {
 		log.Fatalf("database initialization failed: %v", err)
