@@ -3,7 +3,9 @@ import Constants from "expo-constants";
 import { clearToken, getToken, setToken } from "@/src/services/storage";
 
 const manifestUrl = Constants.expoConfig?.hostUri?.split(":")[0];
-const defaultBaseUrl = manifestUrl ? `http://${manifestUrl}:18000/api` : "http://localhost:18000/api";
+const productionBaseUrl = "https://creators-api.onrender.com/api";
+const localBaseUrl = manifestUrl ? `http://${manifestUrl}:18000/api` : "http://localhost:18000/api";
+const defaultBaseUrl = process.env.NODE_ENV === "production" ? productionBaseUrl : localBaseUrl;
 const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL ?? defaultBaseUrl).replace(/\/$/, "");
 const REALTIME_BASE_URL = API_BASE_URL.replace(/^http/i, (value) => (value.toLowerCase() === "https" ? "wss" : "ws"));
 
