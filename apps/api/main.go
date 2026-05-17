@@ -80,7 +80,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              ":" + port,
-		Handler:           withCORS(mux),
+		Handler:           requestLogger(withCORS(mux)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -88,6 +88,13 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server failed: %v", err)
 	}
+}
+
+func requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s origin=%q", r.Method, r.URL.Path, r.Header.Get("Origin"))
+		next.ServeHTTP(w, r)
+	})
 }
 
 func minioHealthURL() string {
