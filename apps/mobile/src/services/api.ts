@@ -6,7 +6,15 @@ const API_PATH = "/api";
 const manifestUrl = Constants.expoConfig?.hostUri?.split(":")[0];
 const productionBaseUrl = "https://creators-api.onrender.com/api";
 const localBaseUrl = manifestUrl ? `http://${manifestUrl}:18000/api` : "http://localhost:18000/api";
-const defaultBaseUrl = process.env.NODE_ENV === "production" ? productionBaseUrl : localBaseUrl;
+
+function renderApiBaseUrlFromHost(hostname?: string) {
+  const match = hostname?.match(/^creators-(?:web|mobile-web)(-[^.]+)?\.onrender\.com$/);
+  return match ? `https://creators-api${match[1] ?? ""}.onrender.com/api` : null;
+}
+
+const renderPageHost = typeof window !== "undefined" ? window.location.hostname : undefined;
+const renderPageBaseUrl = renderApiBaseUrlFromHost(renderPageHost);
+const defaultBaseUrl = process.env.NODE_ENV === "production" ? renderPageBaseUrl ?? productionBaseUrl : localBaseUrl;
 
 function withApiPath(url: string) {
   const normalized = url.replace(/\/$/, "");
