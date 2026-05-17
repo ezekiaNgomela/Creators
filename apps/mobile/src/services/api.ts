@@ -2,11 +2,32 @@ import Constants from "expo-constants";
 
 import { clearToken, getToken, setToken } from "@/src/services/storage";
 
+const API_PATH = "/api";
 const manifestUrl = Constants.expoConfig?.hostUri?.split(":")[0];
 const productionBaseUrl = "https://creators-api.onrender.com/api";
 const localBaseUrl = manifestUrl ? `http://${manifestUrl}:18000/api` : "http://localhost:18000/api";
 const defaultBaseUrl = process.env.NODE_ENV === "production" ? productionBaseUrl : localBaseUrl;
-const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL ?? defaultBaseUrl).replace(/\/$/, "");
+
+function withApiPath(url: string) {
+  const normalized = url.replace(/\/$/, "");
+  return normalized.endsWith(API_PATH) ? normalized : `${normalized}${API_PATH}`;
+}
+
+function resolveApiBaseUrl() {
+  const explicitBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (explicitBaseUrl) {
+    return withApiPath(explicitBaseUrl);
+  }
+
+  const renderApiOrigin = process.env.EXPO_PUBLIC_API_ORIGIN?.trim();
+  if (renderApiOrigin) {
+    return withApiPath(renderApiOrigin);
+  }
+
+  return defaultBaseUrl;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 const REALTIME_BASE_URL = API_BASE_URL.replace(/^http/i, (value) => (value.toLowerCase() === "https" ? "wss" : "ws"));
 
 export type HealthResponse = {

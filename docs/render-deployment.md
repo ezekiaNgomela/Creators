@@ -30,7 +30,7 @@ If you do not want to use the Blueprint yet, create the services manually with t
 - Root directory: leave empty / repository root
 - Build command: `cd apps/web && npm ci && npm run build`
 - Publish directory: `apps/web/dist`
-- Environment variable: `VITE_API_BASE_URL=https://creators-api.onrender.com/api`
+- Environment variable: `VITE_API_ORIGIN=<your Render API external URL>` (for example, `https://creators-api.onrender.com`)
 - Rewrite rule: `/*` to `/index.html`
 
 ### Expo web static site
@@ -39,7 +39,7 @@ If you do not want to use the Blueprint yet, create the services manually with t
 - Root directory: leave empty / repository root
 - Build command: `cd apps/mobile && npm ci && npx expo export --platform web`
 - Publish directory: `apps/mobile/dist`
-- Environment variable: `EXPO_PUBLIC_API_BASE_URL=https://creators-api.onrender.com/api`
+- Environment variable: `EXPO_PUBLIC_API_ORIGIN=<your Render API external URL>` (for example, `https://creators-api.onrender.com`)
 - Rewrite rule: `/*` to `/index.html`
 
 ### Go API web service
@@ -70,16 +70,18 @@ The Blueprint wires the backend to Render-managed data services:
 - `DISABLE_MINIO_HEALTH=true` keeps the smoke-test health check green without requiring a MinIO service.
 - `FRONTEND_ORIGIN` allows both hosted frontend origins through CORS.
 
-The frontends are built against the Render API URL:
+The frontends are built against the Render API URL. In the Blueprint, Render injects the API service URL from `creators-api` via `RENDER_EXTERNAL_URL`, and the apps append `/api` in code:
 
-- Vite uses `VITE_API_BASE_URL=https://creators-api.onrender.com/api`.
-- Expo web uses `EXPO_PUBLIC_API_BASE_URL=https://creators-api.onrender.com/api`.
+- Vite uses `VITE_API_ORIGIN` from the `creators-api` service.
+- Expo web uses `EXPO_PUBLIC_API_ORIGIN` from the `creators-api` service.
 
-If Render assigns a different hostname or you rename a service, update these three values in the Render dashboard or in `render.yaml`:
+If you configure services manually, use the API service external URL without the `/api` suffix for these origin variables. The apps also still support `VITE_API_BASE_URL` and `EXPO_PUBLIC_API_BASE_URL` when you need to provide a complete URL that already includes `/api`.
+
+If Render assigns a different hostname or you rename a service, update these values in the Render dashboard or in `render.yaml`:
 
 - API `FRONTEND_ORIGIN`
-- Vite `VITE_API_BASE_URL`
-- Expo `EXPO_PUBLIC_API_BASE_URL`
+- Vite `VITE_API_ORIGIN` or `VITE_API_BASE_URL`
+- Expo `EXPO_PUBLIC_API_ORIGIN` or `EXPO_PUBLIC_API_BASE_URL`
 
 ## Backend hosting recommendation
 

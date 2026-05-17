@@ -1,15 +1,13 @@
 import { FormEvent, useState } from "react";
-import { getGoogleAuthUrl, loginAccount, registerAccount, type AuthUser } from "../api";
+import { API_BASE_URL, getGoogleAuthUrl, loginAccount, registerAccount, type AuthUser } from "../api";
 import type { AuthMode } from "../shared/types";
-
-const EXPECTED_API_URL = "https://creators-api.onrender.com/api";
 
 function authErrorMessage(err: unknown, action: "register" | "login") {
   const message = err instanceof Error ? err.message : "Authentication failed";
   const currentUrl = typeof window !== "undefined" ? window.location.href : "unknown page";
 
   if (/failed to fetch/i.test(message)) {
-    return `Network failed while trying to ${action}. Page: ${currentUrl}. Expected API: ${EXPECTED_API_URL}. If API logs still show only /api/health, this frontend build is not reaching the API.`;
+    return `Network failed while trying to ${action}. Page: ${currentUrl}. Expected API: ${API_BASE_URL}. If API logs still show only /api/health, this frontend build is not reaching the API.`;
   }
 
   return message;

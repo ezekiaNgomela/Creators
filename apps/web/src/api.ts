@@ -1,9 +1,30 @@
+const API_PATH = "/api";
+
 const FALLBACK_API_BASE_URL =
   typeof window !== "undefined" && window.location.hostname.endsWith(".onrender.com")
     ? "https://creators-api.onrender.com/api"
     : "http://localhost:18000/api";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? FALLBACK_API_BASE_URL).replace(/\/$/, "");
+function withApiPath(url: string) {
+  const normalized = url.replace(/\/$/, "");
+  return normalized.endsWith(API_PATH) ? normalized : `${normalized}${API_PATH}`;
+}
+
+function resolveApiBaseUrl() {
+  const explicitBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (explicitBaseUrl) {
+    return withApiPath(explicitBaseUrl);
+  }
+
+  const renderApiOrigin = import.meta.env.VITE_API_ORIGIN?.trim();
+  if (renderApiOrigin) {
+    return withApiPath(renderApiOrigin);
+  }
+
+  return FALLBACK_API_BASE_URL;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 const TOKEN_KEY = "creators.authToken";
 
 export type HealthResponse = {
