@@ -2,31 +2,79 @@ const API_PATH = "/api";
 
 const DEFAULT_RENDER_API_BASE_URL = "https://creators-api.onrender.com/api";
 
+const LOCAL_API_BASE_URL = "http://localhost:18000/api";
+
 const FALLBACK_API_BASE_URL =
   typeof window !== "undefined" && window.location.hostname.endsWith(".onrender.com")
     ? DEFAULT_RENDER_API_BASE_URL
-    : "http://localhost:18000/api";
+    : LOCAL_API_BASE_URL;
 
 function withApiPath(url: string) {
   const normalized = url.replace(/\/$/, "");
   return normalized.endsWith(API_PATH) ? normalized : `${normalized}${API_PATH}`;
 }
 
-function resolveApiBaseUrl() {
-  const explicitBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-  if (explicitBaseUrl) {
-    return withApiPath(explicitBaseUrl);
+function renderSiblingApiBaseUrl() {
+  if (typeof window === "undefined") {
+    return null;
   }
 
-  const renderApiOrigin = import.meta.env.VITE_API_ORIGIN?.trim();
-  if (renderApiOrigin) {
-    return withApiPath(renderApiOrigin);
-  }
-
-  return FALLBACK_API_BASE_URL;
+  const match = window.location.hostname.match(/^creators-(?:web|mobile-web)(-[^.]+)?\.onrender\.com$/);
+  return match ? `https://creators-api${match[1] ?? ""}.onrender.com/api` : null;
 }
 
-export const API_BASE_URL = resolveApiBaseUrl();
+function uniqueApiBaseUrls(urls: Array<string | null | undefined>) {
+  return [...new Set(urls.filter((url): url is string => Boolean(url)))];
+}
+
+function resolveApiBaseUrlCandidates() {
+  const explicitBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+  const renderApiOrigin = import.meta.env.VITE_API_ORIGIN?.trim();
+
+  return uniqueApiBaseUrls([
+    explicitBaseUrl ? withApiPath(explicitBaseUrl) : null,
+    renderApiOrigin ? withApiPath(renderApiOrigin) : null,
+    FALLBACK_API_BASE_URL,
+    renderSiblingApiBaseUrl(),
+  ]);
+}
+
+export const API_BASE_URLS = resolveApiBaseUrlCandidates();
+export const API_BASE_URL = API_BASE_URLS[0] ?? LOCAL_API_BASE_URL;
+let activeApiBaseUrl: string | null = null;
+
+async function canReachApiBaseUrl(baseUrl: string) {
+  try {
+    const response = await fetch(`${baseUrl}/health`, {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveActiveApiBaseUrl() {
+  if (activeApiBaseUrl) {
+    return activeApiBaseUrl;
+  }
+
+  if (API_BASE_URLS.length <= 1) {
+    activeApiBaseUrl = API_BASE_URL;
+    return activeApiBaseUrl;
+  }
+
+  for (const baseUrl of API_BASE_URLS) {
+    if (await canReachApiBaseUrl(baseUrl)) {
+      activeApiBaseUrl = baseUrl;
+      return activeApiBaseUrl;
+    }
+  }
+
+  activeApiBaseUrl = API_BASE_URL;
+  return activeApiBaseUrl;
+}
 const TOKEN_KEY = "creators.authToken";
 
 export type HealthResponse = {
@@ -272,11 +320,18 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-    credentials: "include",
-  });
+  const apiBaseUrl = await resolveActiveApiBaseUrl();
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "request could not reach the API";
+    throw new Error(`Network failed while calling ${apiBaseUrl}. Tried APIs: ${API_BASE_URLS.join(", ")}. ${detail}`);
+  }
 
   if (!response.ok) {
     let payload: ApiError = {};

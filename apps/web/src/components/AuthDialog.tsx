@@ -1,13 +1,13 @@
 import { FormEvent, useState } from "react";
-import { API_BASE_URL, getGoogleAuthUrl, loginAccount, registerAccount, type AuthUser } from "../api";
+import { API_BASE_URL, API_BASE_URLS, getGoogleAuthUrl, loginAccount, registerAccount, type AuthUser } from "../api";
 import type { AuthMode } from "../shared/types";
 
 function authErrorMessage(err: unknown, action: "register" | "login") {
   const message = err instanceof Error ? err.message : "Authentication failed";
   const currentUrl = typeof window !== "undefined" ? window.location.href : "unknown page";
 
-  if (/failed to fetch/i.test(message)) {
-    return `Network failed while trying to ${action}. Page: ${currentUrl}. Expected API: ${API_BASE_URL}. If API logs still show only /api/health, this frontend build is not reaching the API.`;
+  if (/failed to fetch|network failed/i.test(message)) {
+    return `Network failed while trying to ${action}. Page: ${currentUrl}. Expected API: ${API_BASE_URL}. Tried APIs: ${API_BASE_URLS.join(", ")}. If API logs still show only /api/health, this frontend build is not reaching the API.`;
   }
 
   return message;

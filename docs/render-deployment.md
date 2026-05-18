@@ -77,7 +77,7 @@ The frontends are built against the Render API URL. In the Blueprint, Render inj
 
 If you configure services manually, use the API service external URL without the `/api` suffix for these origin variables. The apps also still support `VITE_API_BASE_URL` and `EXPO_PUBLIC_API_BASE_URL` when you need to provide a complete URL that already includes `/api`.
 
-If a static frontend build is missing these variables, hosted Render frontends fall back to the default API service URL, `https://creators-api.onrender.com/api`. Do not rely on Render's generated frontend hostname suffixes to find the API; for example, `https://creators-web-whtz.onrender.com` should still call `https://creators-api.onrender.com/api` unless you explicitly set a different API URL in Render.
+If a static frontend build is missing these variables, hosted Render frontends try the default API service URL, `https://creators-api.onrender.com/api`, first. The apps also keep a runtime health-check fallback for Render preview-style sibling hostnames such as `https://creators-api-whtz.onrender.com/api`; this lets registration keep working if Render deploys the API with the same suffix as `https://creators-web-whtz.onrender.com`, while still preferring the canonical API URL.
 
 If Render assigns a different API hostname or you rename a service, update these values in the Render dashboard or in `render.yaml`:
 
