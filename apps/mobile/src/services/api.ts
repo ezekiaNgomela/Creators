@@ -266,12 +266,21 @@ export type ChatUser = {
 
 type ApiError = { message?: string };
 
+function shouldUseSimpleJsonContentType(body: RequestInit["body"], hasAuthToken: boolean) {
+  return typeof body === "string" && !hasAuthToken;
+}
+
 async function apiRequest<T>(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers);
   const token = await getToken();
 
+  const hasAuthToken = Boolean(token);
+
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
+    headers.set(
+      "Content-Type",
+      shouldUseSimpleJsonContentType(options.body, hasAuthToken) ? "text/plain;charset=UTF-8" : "application/json",
+    );
   }
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);

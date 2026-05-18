@@ -79,6 +79,8 @@ If you configure services manually, use the API service external URL without the
 
 If a static frontend build is missing these variables, hosted Render frontends try the default API service URL, `https://creators-api.onrender.com/api`, first. The apps also keep a runtime health-check fallback for Render preview-style sibling hostnames such as `https://creators-api-whtz.onrender.com/api`; this lets registration keep working if Render deploys the API with the same suffix as `https://creators-web-whtz.onrender.com`, while still preferring the canonical API URL.
 
+For unauthenticated JSON requests such as register and login, the frontend sends the JSON body with a simple `text/plain` content type. The Go API still decodes the JSON body normally, and this avoids browser CORS preflight failures on first-time auth attempts.
+
 If Render assigns a different API hostname or you rename a service, update these values in the Render dashboard or in `render.yaml`:
 
 - API `FRONTEND_ORIGIN`
