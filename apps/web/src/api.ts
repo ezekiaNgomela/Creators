@@ -2,24 +2,10 @@ const API_PATH = "/api";
 
 const DEFAULT_RENDER_API_BASE_URL = "https://creators-api.onrender.com/api";
 
-function renderApiBaseUrlFromPage() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const match = window.location.hostname.match(/^creators-(?:web|mobile-web)(-[^.]+)?\.onrender\.com$/);
-  if (!match) {
-    return null;
-  }
-
-  return `https://creators-api${match[1] ?? ""}.onrender.com/api`;
-}
-
 const FALLBACK_API_BASE_URL =
-  renderApiBaseUrlFromPage() ??
-  (typeof window !== "undefined" && window.location.hostname.endsWith(".onrender.com")
+  typeof window !== "undefined" && window.location.hostname.endsWith(".onrender.com")
     ? DEFAULT_RENDER_API_BASE_URL
-    : "http://localhost:18000/api");
+    : "http://localhost:18000/api";
 
 function withApiPath(url: string) {
   const normalized = url.replace(/\/$/, "");
