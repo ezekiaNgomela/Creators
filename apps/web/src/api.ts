@@ -3,7 +3,29 @@ const FALLBACK_API_BASE_URL =
     ? "https://creators-api.onrender.com/api"
     : "http://localhost:18000/api";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? FALLBACK_API_BASE_URL).replace(/\/$/, "");
+function normalizeApiBaseUrl(input: string): string {
+  const cleaned = input.trim().replace(/\/+$/, "");
+  if (!cleaned) {
+    return FALLBACK_API_BASE_URL;
+  }
+
+  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
+
+  try {
+    const parsed = new URL(withProtocol);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+    if (normalizedPath === "" || normalizedPath === "/") {
+      parsed.pathname = "/api";
+    }
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return cleaned;
+  }
+}
+
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL ?? FALLBACK_API_BASE_URL);
 const TOKEN_KEY = "creators.authToken";
 
 export type HealthResponse = {
