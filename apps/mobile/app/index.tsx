@@ -1,10 +1,11 @@
 import { Redirect, router } from "expo-router";
 import { useState } from "react";
-import { ImageBackground, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ImageBackground, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { GlassCard } from "@/src/components/ui/glass-card";
 import { PrimaryButton } from "@/src/components/ui/primary-button";
 import { useApp } from "@/src/providers/app-provider";
+import { getGoogleAuthUrl } from "@/src/services/api";
 import { palette, radius, spacing } from "@/src/theme/tokens";
 
 export default function LandingScreen() {
@@ -14,6 +15,7 @@ export default function LandingScreen() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   if (session) {
     return <Redirect href="/(tabs)/home" />;
@@ -21,6 +23,20 @@ export default function LandingScreen() {
 
   if (isBooting) {
     return <View style={{ flex: 1, backgroundColor: palette.bg }} />;
+  }
+
+
+  async function continueWithGoogle() {
+    try {
+      setError("");
+      setGoogleLoading(true);
+      const authUrl = await getGoogleAuthUrl();
+      await Linking.openURL(authUrl);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Could not continue with Google");
+    } finally {
+      setGoogleLoading(false);
+    }
   }
 
   async function submit() {
@@ -89,6 +105,11 @@ export default function LandingScreen() {
             <TextInput onChangeText={setPassword} placeholder="Password" placeholderTextColor={palette.textMuted} secureTextEntry style={fieldStyle} value={password} />
             {error ? <Text style={{ color: palette.danger, marginBottom: spacing.sm }}>{error}</Text> : null}
             <PrimaryButton label={mode === "login" ? "Continue to app" : "Create account"} onPress={() => void submit()} />
+            <Pressable onPress={() => void continueWithGoogle()} style={{ marginTop: spacing.sm, alignItems: "center" }}>
+              <Text style={{ color: palette.textMuted, fontWeight: "700" }}>
+                {googleLoading ? "Opening Google..." : "Continue with Google"}
+              </Text>
+            </Pressable>
           </GlassCard>
         </ScrollView>
       </View>
