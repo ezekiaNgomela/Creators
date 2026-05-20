@@ -135,69 +135,7 @@ func (s *DataService) EnsureUserRecords(ctx context.Context, userID int64) error
 		return err
 	}
 
-	starterMessages := []struct {
-		Email   string
-		Legacy  string
-		Body    string
-		Minutes int
-	}{
-		{"alejandro@creators.local", "alejandro-hicks", "I cleaned up the launch checklist. The offer page is ready when you are.", 64},
-		{"mika@creators.local", "mika-studio", "Your live teardown room is picking up signups from the new feed.", 37},
-		{"noor@creators.local", "noor-creates", "Send me the raw clips and I will turn the replay into a short-form batch.", 22},
-	}
-
-	for _, message := range starterMessages {
-		contact, err := s.FindUserByEmail(ctx, message.Email)
-		if err != nil {
-			return err
-		}
-		roomID, err := s.ensureDirectRoom(ctx, userID, contact.ID, message.Legacy)
-		if err != nil {
-			return err
-		}
-		var exists bool
-		if err := s.Pool.QueryRow(ctx, `
-			SELECT EXISTS (SELECT 1 FROM chat_room_messages WHERE room_id = $1)
-		`, roomID).Scan(&exists); err != nil {
-			return err
-		}
-		if exists {
-			continue
-		}
-		if _, err := s.Pool.Exec(ctx, `
-			INSERT INTO chat_room_messages (room_id, sender_user_id, body, created_at)
-			VALUES ($1, $2, $3, $4)
-		`, roomID, contact.ID, message.Body, time.Now().Add(-time.Duration(message.Minutes)*time.Minute)); err != nil {
-			return err
-		}
-	}
-
-	groupID, err := s.ensureGroupRoom(ctx, userID, "Creator launch pod", []string{
-		"noor@creators.local",
-		"mika@creators.local",
-		"alejandro@creators.local",
-	})
-	if err != nil {
-		return err
-	}
-	var groupHasMessages bool
-	if err := s.Pool.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM chat_room_messages WHERE room_id = $1)
-	`, groupID).Scan(&groupHasMessages); err != nil {
-		return err
-	}
-	if !groupHasMessages {
-		author, err := s.FindUserByEmail(ctx, "alejandro@creators.local")
-		if err != nil {
-			return err
-		}
-		if _, err := s.Pool.Exec(ctx, `
-			INSERT INTO chat_room_messages (room_id, sender_user_id, body, created_at)
-			VALUES ($1, $2, $3, $4)
-		`, groupID, author.ID, "Group room is ready. Add whoever needs the launch context.", time.Now().Add(-11*time.Minute)); err != nil {
-			return err
-		}
-	}
+	// Do not seed synthetic chat messages automatically; all feed/chat data should come from persisted user actions.
 
 	return nil
 }

@@ -262,6 +262,17 @@ export async function logoutAccount() {
   await clearToken();
 }
 
+
+export async function getGoogleAuthUrl() {
+  const response = await apiRequest<{ authUrl: string }>("/auth/google/start?format=json", {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+  return response.authUrl;
+}
+
 export async function fetchFeed() {
   return apiRequest<FeedResponse>("/feed");
 }
