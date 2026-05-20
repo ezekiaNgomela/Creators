@@ -1,9 +1,80 @@
+const API_PATH = "/api";
+
+const DEFAULT_RENDER_API_BASE_URL = "https://creators-api.onrender.com/api";
+
+const LOCAL_API_BASE_URL = "http://localhost:18000/api";
+
 const FALLBACK_API_BASE_URL =
   typeof window !== "undefined" && window.location.hostname.endsWith(".onrender.com")
-    ? "https://creators-api.onrender.com/api"
-    : "http://localhost:18000/api";
+    ? DEFAULT_RENDER_API_BASE_URL
+    : LOCAL_API_BASE_URL;
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? FALLBACK_API_BASE_URL).replace(/\/$/, "");
+function withApiPath(url: string) {
+  const normalized = url.replace(/\/$/, "");
+  return normalized.endsWith(API_PATH) ? normalized : `${normalized}${API_PATH}`;
+}
+
+function renderSiblingApiBaseUrl() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const match = window.location.hostname.match(/^creators-(?:web|mobile-web)(-[^.]+)?\.onrender\.com$/);
+  return match ? `https://creators-api${match[1] ?? ""}.onrender.com/api` : null;
+}
+
+function uniqueApiBaseUrls(urls: Array<string | null | undefined>) {
+  return [...new Set(urls.filter((url): url is string => Boolean(url)))];
+}
+
+function resolveApiBaseUrlCandidates() {
+  const explicitBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+  const renderApiOrigin = import.meta.env.VITE_API_ORIGIN?.trim();
+
+  return uniqueApiBaseUrls([
+    explicitBaseUrl ? withApiPath(explicitBaseUrl) : null,
+    renderApiOrigin ? withApiPath(renderApiOrigin) : null,
+    FALLBACK_API_BASE_URL,
+    renderSiblingApiBaseUrl(),
+  ]);
+}
+
+export const API_BASE_URLS = resolveApiBaseUrlCandidates();
+export const API_BASE_URL = API_BASE_URLS[0] ?? LOCAL_API_BASE_URL;
+let activeApiBaseUrl: string | null = null;
+
+async function canReachApiBaseUrl(baseUrl: string) {
+  try {
+    const response = await fetch(`${baseUrl}/health`, {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveActiveApiBaseUrl() {
+  if (activeApiBaseUrl) {
+    return activeApiBaseUrl;
+  }
+
+  if (API_BASE_URLS.length <= 1) {
+    activeApiBaseUrl = API_BASE_URL;
+    return activeApiBaseUrl;
+  }
+
+  for (const baseUrl of API_BASE_URLS) {
+    if (await canReachApiBaseUrl(baseUrl)) {
+      activeApiBaseUrl = baseUrl;
+      return activeApiBaseUrl;
+    }
+  }
+
+  activeApiBaseUrl = API_BASE_URL;
+  return activeApiBaseUrl;
+}
 const TOKEN_KEY = "creators.authToken";
 
 export type HealthResponse = {
@@ -238,22 +309,38 @@ type ApiError = {
   message?: string;
 };
 
+function shouldUseSimpleJsonContentType(body: RequestInit["body"], hasAuthToken: boolean) {
+  return typeof body === "string" && !hasAuthToken;
+}
+
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   const token = getStoredToken();
 
+  const hasAuthToken = Boolean(token);
+
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
+    headers.set(
+      "Content-Type",
+      shouldUseSimpleJsonContentType(options.body, hasAuthToken) ? "text/plain;charset=UTF-8" : "application/json",
+    );
   }
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-    credentials: "include",
-  });
+  const apiBaseUrl = await resolveActiveApiBaseUrl();
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "request could not reach the API";
+    throw new Error(`Network failed while calling ${apiBaseUrl}. Tried APIs: ${API_BASE_URLS.join(", ")}. ${detail}`);
+  }
 
   if (!response.ok) {
     let payload: ApiError = {};

@@ -2,11 +2,76 @@ import Constants from "expo-constants";
 
 import { clearToken, getToken, setToken } from "@/src/services/storage";
 
+const API_PATH = "/api";
 const manifestUrl = Constants.expoConfig?.hostUri?.split(":")[0];
 const productionBaseUrl = "https://creators-api.onrender.com/api";
 const localBaseUrl = manifestUrl ? `http://${manifestUrl}:18000/api` : "http://localhost:18000/api";
+
 const defaultBaseUrl = process.env.NODE_ENV === "production" ? productionBaseUrl : localBaseUrl;
-const API_BASE_URL = (process.env.EXPO_PUBLIC_API_BASE_URL ?? defaultBaseUrl).replace(/\/$/, "");
+
+function withApiPath(url: string) {
+  const normalized = url.replace(/\/$/, "");
+  return normalized.endsWith(API_PATH) ? normalized : `${normalized}${API_PATH}`;
+}
+
+function renderSiblingApiBaseUrl() {
+  const hostname = typeof window !== "undefined" ? window.location.hostname : undefined;
+  const match = hostname?.match(/^creators-(?:web|mobile-web)(-[^.]+)?\.onrender\.com$/);
+  return match ? `https://creators-api${match[1] ?? ""}.onrender.com/api` : null;
+}
+
+function uniqueApiBaseUrls(urls: Array<string | null | undefined>) {
+  return [...new Set(urls.filter((url): url is string => Boolean(url)))];
+}
+
+function resolveApiBaseUrlCandidates() {
+  const explicitBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  const renderApiOrigin = process.env.EXPO_PUBLIC_API_ORIGIN?.trim();
+
+  return uniqueApiBaseUrls([
+    explicitBaseUrl ? withApiPath(explicitBaseUrl) : null,
+    renderApiOrigin ? withApiPath(renderApiOrigin) : null,
+    defaultBaseUrl,
+    renderSiblingApiBaseUrl(),
+  ]);
+}
+
+const API_BASE_URLS = resolveApiBaseUrlCandidates();
+const API_BASE_URL = API_BASE_URLS[0] ?? localBaseUrl;
+let activeApiBaseUrl: string | null = null;
+
+async function canReachApiBaseUrl(baseUrl: string) {
+  try {
+    const response = await fetch(`${baseUrl}/health`, {
+      headers: { Accept: "application/json" },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveActiveApiBaseUrl() {
+  if (activeApiBaseUrl) {
+    return activeApiBaseUrl;
+  }
+
+  if (API_BASE_URLS.length <= 1) {
+    activeApiBaseUrl = API_BASE_URL;
+    return activeApiBaseUrl;
+  }
+
+  for (const baseUrl of API_BASE_URLS) {
+    if (await canReachApiBaseUrl(baseUrl)) {
+      activeApiBaseUrl = baseUrl;
+      return activeApiBaseUrl;
+    }
+  }
+
+  activeApiBaseUrl = API_BASE_URL;
+  return activeApiBaseUrl;
+}
+
 const REALTIME_BASE_URL = API_BASE_URL.replace(/^http/i, (value) => (value.toLowerCase() === "https" ? "wss" : "ws"));
 
 export type HealthResponse = {
@@ -201,21 +266,37 @@ export type ChatUser = {
 
 type ApiError = { message?: string };
 
+function shouldUseSimpleJsonContentType(body: RequestInit["body"], hasAuthToken: boolean) {
+  return typeof body === "string" && !hasAuthToken;
+}
+
 async function apiRequest<T>(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers);
   const token = await getToken();
 
+  const hasAuthToken = Boolean(token);
+
   if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
+    headers.set(
+      "Content-Type",
+      shouldUseSimpleJsonContentType(options.body, hasAuthToken) ? "text/plain;charset=UTF-8" : "application/json",
+    );
   }
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const apiBaseUrl = await resolveActiveApiBaseUrl();
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "request could not reach the API";
+    throw new Error(`Network failed while calling ${apiBaseUrl}. Tried APIs: ${API_BASE_URLS.join(", ")}. ${detail}`);
+  }
 
   if (!response.ok) {
     let payload: ApiError = {};

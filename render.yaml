@@ -35,8 +35,11 @@ services:
     buildCommand: cd apps/web && npm ci && npm run build
     staticPublishPath: apps/web/dist
     envVars:
-      - key: VITE_API_BASE_URL
-        value: https://creators-api.onrender.com/api
+      - key: VITE_API_ORIGIN
+        fromService:
+          type: web
+          name: creators-api
+          envVarKey: RENDER_EXTERNAL_URL
     routes:
       - type: rewrite
         source: /*
@@ -48,8 +51,11 @@ services:
     buildCommand: cd apps/mobile && npm ci && npx expo export --platform web
     staticPublishPath: apps/mobile/dist
     envVars:
-      - key: EXPO_PUBLIC_API_BASE_URL
-        value: https://creators-api.onrender.com/api
+      - key: EXPO_PUBLIC_API_ORIGIN
+        fromService:
+          type: web
+          name: creators-api
+          envVarKey: RENDER_EXTERNAL_URL
     routes:
       - type: rewrite
         source: /*
