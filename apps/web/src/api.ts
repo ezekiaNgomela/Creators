@@ -4,20 +4,25 @@ const FALLBACK_API_BASE_URL =
     : "http://localhost:18000/api";
 
 function normalizeApiBaseUrl(input: string): string {
-  const trimmed = input.trim().replace(/\/$/, "");
-
-  try {
-    const parsed = new URL(trimmed);
-    const path = parsed.pathname.replace(/\/$/, "");
-    if (path === "" || path === "/") {
-      parsed.pathname = "/api";
-      return parsed.toString().replace(/\/$/, "");
-    }
-  } catch {
-    // ignore invalid URLs and use the raw configured value
+  const cleaned = input.trim().replace(/\/+$/, "");
+  if (!cleaned) {
+    return FALLBACK_API_BASE_URL;
   }
 
-  return trimmed;
+  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
+
+  try {
+    const parsed = new URL(withProtocol);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+    if (normalizedPath === "" || normalizedPath === "/") {
+      parsed.pathname = "/api";
+    }
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return cleaned;
+  }
 }
 
 const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL ?? FALLBACK_API_BASE_URL);
